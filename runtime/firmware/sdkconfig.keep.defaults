@@ -1,0 +1,4 @@
+# Release builds: the firmware keeps itself once the desk or installer confirms it is healthy
+# (UPDATES.md "Keeping an image"). Build with:
+#   idf.py -B build-keep -D SDKCONFIG=sdkconfig.keep -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.keep.defaults" build
+CONFIG_FW_KEEPABLE=y

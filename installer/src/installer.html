@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop stop-color='%230ea5ff'/%3E%3Cstop offset='1' stop-color='%230858e0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Cpath transform='translate(12 12) scale(.76)' fill='%23fff' fill-rule='evenodd' d='M86 100 83 100 54 78 37 83 22 86 12 90 6 91 8 89 14 84 5 72 6 71 8 70 11 70 23 77 26 78 38 73 46 69 47 68 46 66 44 64 28 57 24 55 20 50 17 45 29 49 35 50 37 49 24 46 18 43 15 41 11 36 8 28 8 25 12 28 25 35 30 37 31 37 20 30 14 26 10 23 5 13 4 5 4 0 11 7 19 14 51 35 59 41 64 48 65 50 65 56 76 45 79 44 85 43 88 45 91 46 92 46 96 48 90 51 86 55 84 59 77 66 71 70 85 93 86 96Z'/%3E%3C/svg%3E">
+<title>FreeBirdWall Installer</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#1c1f24;--muted:#5d6570;--line:#dfe3e8;--accent:#1769e0;--good:#16803c;--bad:#c62828;--soft:#eef3fd}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111317;--card:#1b1e24;--ink:#e8eaed;--muted:#9aa3ad;--line:#2c313a;--accent:#5b9cff;--good:#46c96f;--bad:#ff6b6b;--soft:#1f2a3d}}
+:root[data-theme="dark"]{--bg:#111317;--card:#1b1e24;--ink:#e8eaed;--muted:#9aa3ad;--line:#2c313a;--accent:#5b9cff;--good:#46c96f;--bad:#ff6b6b;--soft:#1f2a3d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:26px;margin:8px 0 4px}
+.sub{color:var(--muted);margin:0 0 20px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+section h2{font-size:18px;margin:0 0 8px;display:flex;gap:10px;align-items:center}
+.num{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--soft);color:var(--accent);font-weight:700;font-size:15px;flex:none}
+.step.current .num{background:var(--accent);color:#fff}
+p{margin:6px 0}
+ul.check{list-style:none;padding:0;margin:10px 0}
+ul.check li{display:grid;grid-template-columns:24px 1fr;column-gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+ul.check li:first-child{border-top:0}
+ul.check li span{font-weight:700}
+ul.check li.ok span{color:var(--good)} ul.check li.no span{color:var(--bad)}
+ul.check li small{grid-column:2;color:var(--muted)}
+button,.btn{appearance:none;border:0;border-radius:10px;background:var(--accent);color:#fff;font:600 16px system-ui,sans-serif;padding:11px 18px;cursor:pointer;text-decoration:none;display:inline-block}
+button:disabled{opacity:.45;cursor:default}
+button.quiet{background:var(--soft);color:var(--accent)}
+.msg{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--soft)}
+.msg.good{background:color-mix(in srgb,var(--good) 14%,transparent)} .msg.bad{background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.msg small{color:var(--muted);word-break:break-all}
+.progress{margin:10px 0 0}.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden}.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.label{font-size:14px;color:var(--muted);margin-top:4px}
+.warn{border-left:4px solid var(--accent);padding:8px 12px;background:var(--soft);border-radius:8px;margin:10px 0}
+details{margin-top:8px} summary{cursor:pointer;color:var(--accent);font-weight:600}
+a{color:var(--accent)} code{font-size:14px}
+footer{color:var(--muted);font-size:14px;text-align:center}
+label.file{display:inline-block}
+</style>
+</head>
+<body>
+<main>
+<h1>FreeBirdWall Installer</h1>
+<p class="sub">Puts FreeBirdWall, free firmware for the FlightWall mini, on your wall over USB. Version <b id="fw-version">…</b>. Everything happens in this page; nothing is sent anywhere.</p>
+
+<section class="step current" data-step="1">
+  <h2><span class="num">1</span>Connect the wall</h2>
+  <p>Set the wall up with the FlightWall app first, as usual, so it knows your Wi-Fi. Then plug a USB-C <b>data</b> cable into the port inside the back of the wall and into this computer. Use Chrome or Edge.</p>
+  <button id="connect">Connect</button>
+  <div id="connect-msg" class="msg" hidden></div>
+</section>
+
+<section class="step" data-step="2" id="check" hidden>
+  <h2><span class="num">2</span>Check the board</h2>
+  <p>The installer only continues on the exact board the firmware was made for, so it cannot harm different hardware.</p>
+  <ul class="check" id="checks"></ul>
+  <div id="check-msg" class="msg" hidden></div>
+</section>
+
+<section class="step" data-step="3" id="backup" hidden>
+  <h2><span class="num">3</span>Save a backup</h2>
+  <p>A copy of everything on the wall (8 MB), saved on this computer, so it can always be put back exactly as it is now. Takes a few minutes; if you already have one from an earlier install, you can skip it.</p>
+  <button id="save-backup">Save a backup</button>
+  <button class="quiet" id="skip-backup">Skip the backup</button>
+  <div id="backup-progress" class="progress" hidden><div class="bar"><i></i></div><div class="label"></div></div>
+  <div id="backup-msg" class="msg" hidden></div>
+</section>
+
+<section class="step" data-step="4" id="install" hidden>
+  <h2><span class="num">4</span>Install</h2>
+  <p>Writes FreeBirdWall next to the firmware the wall runs now, checks what was written, and only then makes it start next. Your Wi-Fi, account and settings stay.</p>
+  <button id="do-install">Install</button>
+  <div id="install-progress" class="progress" hidden><div class="bar"><i></i></div><div class="label"></div></div>
+  <div id="install-msg" class="msg" hidden></div>
+</section>
+
+<section class="step" data-step="5" id="start" hidden>
+  <h2><span class="num">5</span>First start</h2>
+  <ul class="check" id="start-checks"></ul>
+  <div id="start-msg" class="msg" hidden></div>
+  <div id="key-box" hidden>
+    <details><summary>For later: the update key</summary>
+      <p>Updates can also be installed over Wi-Fi with the desk tools; they need this file. Keep it private. Plugging in USB and using this page works without it.</p>
+      <a class="btn" id="key-file" href="#">Save flightwall-device.json</a>
+    </details>
+  </div>
+</section>
+
+<section id="restore-tools" hidden>
+  <h2>Go back</h2>
+  <p>Start the vendor firmware again (it stays on the board after an install), or put a backup back.</p>
+  <button class="quiet" id="vendor">Start the vendor firmware again</button>
+  <label class="file btn quiet">Restore a backup…<input type="file" id="restore-file" accept=".bin" hidden></label>
+  <div id="tools-progress" class="progress" hidden><div class="bar"><i></i></div><div class="label"></div></div>
+  <div id="tools-msg" class="msg" hidden></div>
+</section>
+
+<footer>Uses <a href="https://github.com/espressif/esptool-js">esptool-js</a> {{ESPTOOL_VERSION}} (Apache-2.0). FreeBirdWall is not made by or affiliated with the makers of FlightWall.</footer>
+</main>
+<script type="text/plain" id="esptool-src">{{ESPTOOL}}</script>
+<script type="application/octet-stream" id="firmware">{{FIRMWARE}}</script>
+<script type="module">{{APP}}</script>
+</body>
+</html>

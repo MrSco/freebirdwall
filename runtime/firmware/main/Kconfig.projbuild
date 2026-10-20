@@ -1,0 +1,153 @@
+menu "FlightWall owned firmware (skeleton)"
+
+config FW_TLS_ARENA_BYTES
+    int "TLS arena size (bytes), reserved statically at boot"
+    range 32768 65536
+    default 49152
+    help
+        Fixed .bss arena for the source-built TLS engine; it never falls back to
+        the system heap. 49152 is the smallest size verified against the real
+        route service on the desktop. Reserving it statically means the size
+        report counts it and runtime fragmentation cannot deny it later.
+
+config FW_PROBE_TASK_STACK
+    int "Network probe task stack (bytes)"
+    range 6144 16384
+    default 10240
+    help
+        TLS handshakes (ECDHE + certificate verification) are stack-hungry.
+        The probe reports this task's high-water mark so the final value can be
+        set from measurement.
+
+config FW_PROBE_ROUNDS
+    int "Route requests per probe run"
+    range 1 20
+    default 3
+    help
+        Several identical requests show whether heap returns to the same level
+        after each, i.e. whether anything leaks per connection.
+
+config FW_PROBE_HOST
+    string "Route service host"
+    default "api.adsbdb.com"
+
+config FW_PROBE_PATH
+    string "Route service path (public test callsign, not owner data)"
+    default "/v0/callsign/DAL42"
+
+config FW_PENDING_RESTART_S
+    int "Restart after N seconds when running unconfirmed (pending) image"
+    range 30 600
+    default 240
+    help
+        If this image was installed as a pending OTA update, it never confirms
+        itself. After the probe (or this deadline), it restarts so the
+        installed bootloader marks it ABORTED and returns to the previous,
+        known-good firmware.
+
+config FW_DISPLAY_ENABLE
+    bool "Drive the HUB75 panels"
+    default y
+    help
+        Starts the panel driver with the configuration recovered from the vendor
+        firmware (PANEL.md) and shows a test pattern while the network probe runs.
+
+config FW_DISPLAY_BRIGHTNESS
+    int "Panel brightness (0-255)"
+    range 1 255
+    default 40
+    help
+        The owner normally runs the panels at about 15%. A low value keeps
+        supply current modest during tests; the vendor uses 160 only briefly.
+
+config FW_PROBE
+    bool "Run the start-up network probe (skeleton measurement)"
+    default y
+    help
+        Three TLS route requests once online, measuring heap and stack. A
+        measurement for test builds; keepable builds leave it out.
+
+config FW_KEEPABLE
+    bool "Keepable build: may confirm itself when the owner asks"
+    default n
+    help
+        Off (test builds): the update service refuses POST /v1/firmware/confirm,
+        so an installed image always rolls back to the previous firmware. On:
+        the owner's confirmation (the desk sends it after an upload) keeps the
+        image if it is healthy (online, panel running); a kept image no longer
+        restarts at the end of the view window. See UPDATES.md.
+
+config FW_WIFI_FAIL_ATTEMPTS
+    int "Test: make the first N connection attempts fail"
+    range 0 20
+    default 0
+    help
+        Board test of the failure path (SETUP.md "Wi-Fi failure and
+        reconnect"): the first N attempts look for a network that does not
+        exist instead of a saved one, so boot fails, setup mode starts and the
+        retries take over. Nothing is written. 0 = off.
+
+config FW_WIFI_DROP_AFTER_S
+    int "Test: drop Wi-Fi once, N seconds after first getting online"
+    range 0 570
+    default 0
+    help
+        Board test of losing the network: disconnects once, N seconds after
+        the board first came online, and fails the next FW_WIFI_DROP_FAILS
+        attempts, so the "Lost connection" messages and retries show. 0 = off.
+
+config FW_WIFI_DROP_FAILS
+    int "Test: attempts that fail after the drop"
+    range 0 20
+    default 3
+
+config FW_SETUP_SAVE
+    bool "Save provisioned Wi-Fi credentials like stock, then restart"
+    default n
+    help
+        After a successful test join, store the station config the way the
+        stock firmware does (Arduino WiFi.begin, persistent: the Wi-Fi driver's
+        own NVS storage), but only when it differs from the stored one, mark
+        the identity provisioned if it is not, put the network first in
+        stock's saved list, and restart after 5 s. These are the owned
+        firmware's only NVS writes. Off: test-join only, nothing saved.
+
+config FW_SETUP_HTTPS
+    bool "Also serve the stock HTTPS setup endpoints (vendor app)"
+    default n
+    help
+        Adds the stock-compatible HTTPS server on 443 with the board's identity
+        certificate, so the vendor app's pinned fingerprint matches, and the
+        vendor QR page. Only useful for setting up the owned firmware with the
+        vendor app; stock keeps its own setup either way. About 160 KB of flash.
+
+config FW_SAFE_MODE_CRASHES
+    int "Start in safe mode after this many crashes in a row (0 = never)"
+    range 0 10
+    default 3
+    help
+        Consecutive panic or watchdog resets, counted in RTC memory. Safe mode
+        starts only Wi-Fi and the update service (UPDATES.md "Safe mode").
+
+config FW_SAFE_MODE_HEALTHY_S
+    int "Seconds of running that clear the crash count"
+    range 30 3600
+    default 120
+
+config FW_SAFE_MODE_TEST
+    bool "Test build: always start in safe mode"
+    default n
+    help
+        Only to check safe mode on the board with a pending test image (which
+        still rolls back by itself).
+
+config FW_VIEW_SECONDS
+    int "Keep a pending image up at least N seconds after boot"
+    range 0 570
+    default 180
+    help
+        Gives time to look at the panel test pattern before the unconfirmed
+        image restarts and the bootloader rolls back. Must stay below
+        FW_PENDING_RESTART_S, the hard deadline.
+
+endmenu

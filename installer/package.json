@@ -1,0 +1,7 @@
+{
+  "name": "installer",
+  "private": true,
+  "type": "module",
+  "description": "Browser USB installer for the owned FlightWall firmware",
+  "scripts": { "test": "node tests/test_installer.mjs" }
+}

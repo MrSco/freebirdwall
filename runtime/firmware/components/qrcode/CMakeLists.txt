@@ -1,0 +1,15 @@
+# ricmoo/QRCode (MIT), the QR generator the vendor's setup screen uses
+# (SETUP.md), built from the pinned checkout in build/deps/qrcode.
+set(src "${CMAKE_CURRENT_LIST_DIR}/../../../build/deps/qrcode")
+get_filename_component(src "${src}" ABSOLUTE)
+set(commit "eafbde494979abc2445c363cc2602230bcbe299c")
+if(NOT EXISTS "${src}/.git/HEAD")
+    message(FATAL_ERROR "QRCode missing. Run: py runtime/firmware/tools/fetch_deps.py")
+endif()
+file(READ "${src}/.git/HEAD" head)
+string(STRIP "${head}" head)
+if(NOT head STREQUAL commit)
+    message(FATAL_ERROR "QRCode is at ${head}, expected ${commit}. Run tools/fetch_deps.py")
+endif()
+idf_component_register(SRCS "fw_qr.c" "${src}/src/qrcode.c" INCLUDE_DIRS "include" PRIV_INCLUDE_DIRS "${src}/src")
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error -Wno-unknown-pragmas -Wno-type-limits)

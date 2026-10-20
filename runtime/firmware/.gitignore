@@ -1,0 +1,9 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+build-keep/
+sdkconfig.keep
+sdkconfig.keep.old
+build-safe/
+sdkconfig.safe

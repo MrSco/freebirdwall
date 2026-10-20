@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop stop-color='%230ea5ff'/%3E%3Cstop offset='1' stop-color='%230858e0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Cpath transform='translate(12 12) scale(.76)' fill='%23fff' fill-rule='evenodd' d='M86 100 83 100 54 78 37 83 22 86 12 90 6 91 8 89 14 84 5 72 6 71 8 70 11 70 23 77 26 78 38 73 46 69 47 68 46 66 44 64 28 57 24 55 20 50 17 45 29 49 35 50 37 49 24 46 18 43 15 41 11 36 8 28 8 25 12 28 25 35 30 37 31 37 20 30 14 26 10 23 5 13 4 5 4 0 11 7 19 14 51 35 59 41 64 48 65 50 65 56 76 45 79 44 85 43 88 45 91 46 92 46 96 48 90 51 86 55 84 59 77 66 71 70 85 93 86 96Z'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>FreeBirdWall</title>
+<style>
+:root{--bg:#0b0d12;--panel:#141821;--panel2:#1b2030;--line:#272d3b;--text:#e9ecf2;--dim:#8f98aa;--accent:#2ec5d8;--accent-ink:#03171b;--warm:#ffb020;--bad:#ff6b6b;--good:#3ddc84;--knob:#3a4256}
+html{color-scheme:dark light}
+@media (prefers-color-scheme:light){:root{--bg:#f3f5f9;--panel:#fff;--panel2:#f1f3f8;--line:#dfe3ec;--text:#141821;--dim:#5d6678;--accent:#0b8fa3;--accent-ink:#fff;--knob:#c4cad6}html{color-scheme:light}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:980px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 16px 120px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+h1{font-size:22px;margin:0}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:5px 10px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.live{background:var(--good)}.dot.wait{background:var(--warm)}.dot.off{background:var(--bad)}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 10px;margin:0 -16px 6px;overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav .tabs{display:flex;gap:8px;padding:0 16px;width:max-content}
+nav button{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:15px}
+nav button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+@media (max-width:600px){nav{position:static;overflow:visible}nav .tabs{display:grid;grid-template-columns:repeat(4,1fr);width:auto}nav button{padding:9px 2px;font-size:14px}}
+.chart{width:100%;height:auto;display:block;margin-top:6px}
+.chart text{fill:var(--dim);font-size:10px;font-family:inherit}
+.big{font-size:34px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.bars{margin:6px 0 0;padding:0;list-style:none}
+.bars li{display:grid;grid-template-columns:44px 1fr 36px;gap:8px;align-items:center;margin:5px 0;font-variant-numeric:tabular-nums}
+.bars .b{height:12px;border-radius:6px;background:var(--accent)}
+.bars .n{text-align:right;color:var(--dim)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--dim);font-size:12px;margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.grid{display:grid;gap:14px;align-items:start}
+@media (min-width:820px){.grid.two{grid-template-columns:1fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.card h2{font-size:17px;margin:0 0 2px}
+.card .sub{color:var(--dim);font-size:14px;margin:0 0 6px}
+.field{padding:12px 0;border-top:1px solid var(--line);min-width:0}
+.card>.field:first-of-type,.item>.field:first-of-type,.two-col .field{border-top:0}
+.field>label,.field>.label{display:block;font-weight:600;margin-bottom:8px}
+.field small{display:block;color:var(--dim);font-weight:400;font-size:13px;margin-top:1px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.field.row>label{margin:0;flex:1}
+.field.row>label.sw{flex:none}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{flex:1 1 auto;min-width:76px;min-height:42px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:8px 10px;cursor:pointer}
+.seg button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent);font-weight:600}
+select,input[type=text],input[type=number],input[type=time]{width:100%;min-height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+input:focus,select:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:360px){.two-col{grid-template-columns:1fr}}
+.sw{position:relative;width:52px;height:30px;flex:none;display:block}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw span{position:absolute;inset:0;background:var(--knob);border-radius:30px;transition:.2s;cursor:pointer}
+.sw span:before{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.sw input:checked+span{background:var(--accent)}
+.sw input:checked+span:before{transform:translateX(22px)}
+.sw input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:32px;margin:0}
+.rangeval{min-width:56px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:10px 16px;font-weight:600;cursor:pointer;text-decoration:none;color:var(--text)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--bad)}
+.btn.small{min-height:34px;padding:5px 12px;font-size:14px;border-radius:10px}
+.btn:disabled{opacity:.5;cursor:default}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.btns.fill>*{flex:1 1 140px}
+.item{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 12px 4px;margin-top:10px}
+.item .field{border-color:var(--line)}
+.item select,.item input[type=text],.item input[type=number]{background:var(--panel)}
+.item .seg button{background:var(--panel)}
+.item .head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;min-height:34px}
+.item .head span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips:empty{display:none}
+.chip{display:inline-flex;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:3px 3px 3px 12px;font-weight:600;font-variant-numeric:tabular-nums}
+.chip button{border:0;background:transparent;color:var(--dim);font-size:20px;line-height:1;cursor:pointer;width:32px;height:32px;border-radius:50%}
+.add{display:flex;gap:8px}
+.add input{flex:1;min-width:0;text-transform:uppercase}
+.add input::placeholder{text-transform:none}
+.err{color:var(--bad);font-size:14px;margin-top:6px}
+.err:empty{display:none}
+.bad{box-shadow:0 0 0 2px var(--bad)!important;border-radius:12px}
+.code{font:700 30px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:6px;text-align:center;flex:1;min-width:0;max-width:260px}
+.muted{color:var(--dim)}
+.note{color:var(--dim);font-size:13px;margin:8px 0 0}
+.note a{color:var(--accent)}
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:10;transform:translateY(110%);transition:transform .2s;padding:12px 16px max(12px,env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.25)}
+#bar.show{transform:none}
+#bar .in{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
+#bar .btns{margin:0;flex-wrap:nowrap}
+#toast{position:fixed;left:50%;top:12px;transform:translate(-50%,-160%);z-index:20;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;transition:transform .2s;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+#toast.show{transform:translate(-50%,0)}
+.hidden{display:none!important}
+.console{margin:8px 0 0;max-height:320px;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>FreeBirdWall</h1><span class="pill" id="status"><span class="dot"></span><span>Connecting…</span></span></header>
+
+<section id="wait" class="card hidden" style="margin:8px 0 14px"><h2>Connecting to the wall…</h2><p class="sub" style="margin:0">It may be restarting. Trying again every few seconds; you stay signed in.</p></section>
+<section id="signin" class="card hidden" style="margin:8px 0 14px">
+<h2>Sign in to change settings</h2>
+<p class="sub">The wall shows a six-digit code for two minutes. This browser then stays signed in.</p>
+<div id="si-step1" class="btns" style="margin-top:6px"><button class="btn primary" id="si-show" type="button">Show a code on the wall</button></div>
+<div id="si-step2" class="hidden">
+<label for="si-code" class="muted" style="display:block;margin:8px 0">Code on the wall <span id="si-left"></span></label>
+<div class="add"><input id="si-code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" aria-label="Six-digit code">
+<button class="btn primary" id="si-go" type="button">Sign in</button></div>
+<button class="btn small" id="si-again" type="button" style="margin-top:12px">New code</button>
+</div>
+<div class="err" id="si-err" role="alert"></div>
+</section>
+
+<nav id="nav" class="hidden" aria-label="Settings sections"><div class="tabs" role="tablist"></div></nav>
+<main id="main"></main>
+</div>
+
+<div id="bar" role="region" aria-label="Unsaved changes"><div class="in"><span>Unsaved changes</span>
+<span class="btns"><button class="btn" id="bar-discard" type="button">Discard</button><button class="btn primary" id="bar-save" type="button">Save</button></span></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+function $(s,r){return (r||document).querySelector(s)}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
+function store(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}return null}
+var key=store('fwkey');
+var st={rev:0,doc:null,work:null,aliases:{revision:0,aliases:[]},aliasWork:[],feed:-1,tab:store('fwtab')||'display',dirty:false,games:null};
+
+/* ------------------------------------------------------------ helpers */
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function clone(o){return o===undefined?undefined:JSON.parse(JSON.stringify(o))}
+function same(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function toast(t){var el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(function(){el.classList.remove('show')},2600)}
+function get(o,path){return path.split('.').reduce(function(a,k){return a==null?undefined:a[k]},o)}
+function set(o,path,v){var ks=path.split('.'),last=ks.pop(),t=o;
+ ks.forEach(function(k){if(t[k]==null||typeof t[k]!=='object')t[k]={};t=t[k]});
+ if(v===undefined){if(Array.isArray(t))t.splice(+last,1);else delete t[last]}else t[last]=v}
+function idOf(p){return 'f_'+p.replace(/\W/g,'_')}
+function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};opt.cache='no-store';
+ if(key&&path.indexOf('/api/games')<0)opt.headers.Authorization='Bearer '+key;
+ if(opt.json!==undefined){opt.body=JSON.stringify(opt.json);opt.headers['Content-Type']='application/json';delete opt.json}
+ return fetch(path,opt).then(function(r){return r.text().then(function(t){var j={};try{j=t?JSON.parse(t):{}}catch(e){}
+  if(!r.ok){var e=new Error(j.error||('The wall answered '+r.status));e.status=r.status;e.body=j;
+   if(r.status===401&&key){signedOut();e.message='Signed out · sign in again'}throw e}return j})})}
+function signedOut(){key=null;store('fwkey',null);st.doc=null;st.dirty=false;show()}
+
+/* ------------------------------------------------------------ status pill */
+var FEED=['Demo screens','Needs settings','Waiting for flights','Live flights'];
+function status(){var d=$('#status .dot'),t=$('#status span:last-child'),f=st.feed;
+ d.className='dot'+(f===3?' live':f===2?' wait':f===1?' off':'');
+ t.textContent=f>=0?FEED[f]:(st.doc===null&&!key?'Not signed in':'On this network')}
+
+/* ------------------------------------------------------------ sign in */
+var leftTimer=0;
+function startCode(btn){btn.disabled=true;$('#si-err').textContent='';
+ api('/api/pair/start',{method:'POST'}).then(function(j){$('#si-step1').classList.add('hidden');$('#si-step2').classList.remove('hidden');
+   var c=$('#si-code');c.value='';c.focus();countdown(j.seconds||120)})
+ .catch(function(e){$('#si-err').textContent=e.status===429?'Wait a few seconds, then try again.':e.message})
+ .then(function(){btn.disabled=false})}
+$('#si-show').onclick=function(){startCode(this)};
+$('#si-again').onclick=function(){startCode(this)};
+function countdown(s){clearInterval(leftTimer);var end=Date.now()+s*1000;
+ function tick(){var l=Math.max(0,Math.round((end-Date.now())/1000));
+  $('#si-left').textContent=l?'· '+Math.floor(l/60)+':'+String(l%60).padStart(2,'0')+' left':'· expired, ask for a new code';if(!l)clearInterval(leftTimer)}
+ tick();leftTimer=setInterval(tick,1000)}
+$('#si-code').addEventListener('input',function(){this.value=this.value.replace(/\D/g,'').slice(0,6);if(this.value.length===6)finish()});
+$('#si-code').addEventListener('keydown',function(e){if(e.key==='Enter')finish()});
+$('#si-go').onclick=finish;
+function finish(){var c=$('#si-code').value,go=$('#si-go');if(go.disabled)return;
+ if(c.length!==6){$('#si-err').textContent='Type the six digits shown on the wall.';return}
+ go.disabled=true;$('#si-err').textContent='';
+ api('/api/pair/finish',{method:'POST',json:{code:c}}).then(function(j){key=j.key;store('fwkey',key);clearInterval(leftTimer);toast('Signed in');load()})
+ .catch(function(e){var t=e.body&&e.body.tries_left;
+   $('#si-err').textContent=e.status===403?(t?'Wrong code · '+t+' '+(t===1?'try':'tries')+' left':'Wrong code · ask for a new one'):e.status===409?'No code is showing · ask for a new one':e.message;
+   $('#si-code').select()})
+ .then(function(){go.disabled=false})}
+
+/* ------------------------------------------------------------ tabs */
+var TABS=[['display','Display'],['clock','Clock'],['flights','Flights'],['airports','Airports'],['sync','Sync'],['stats','Stats'],['games','Games'],['device','Device']];
+function nav(){$('#nav .tabs').innerHTML=TABS.map(function(x){return '<button type="button" role="tab" data-tab="'+x[0]+'" aria-selected="'+(st.tab===x[0])+'">'+x[1]+'</button>'}).join('');
+ $$('#nav button').forEach(function(b){b.onclick=function(){st.tab=b.dataset.tab;store('fwtab',st.tab);nav();render();window.scrollTo(0,0)}})}
+
+/* ------------------------------------------------------------ field builders (bound to st.work by path) */
+function val(path,dflt){var v=get(st.work,path);return v===undefined?dflt:v}
+function hint(h){return h?'<small>'+h+'</small>':''}
+function seg(path,opts,dflt,label,help){var v=val(path,dflt);
+ return '<div class="field" data-field="'+path+'"><div class="label">'+label+hint(help)+'</div><div class="seg" role="group" aria-label="'+esc(label)+'">'+
+ opts.map(function(o){return '<button type="button" data-set="'+path+'" data-val="'+esc(JSON.stringify(o[0]))+'" aria-pressed="'+(v===o[0])+'">'+o[1]+'</button>'}).join('')+'</div></div>'}
+function sel(path,opts,dflt,label,help){var v=val(path,dflt);
+ return '<div class="field" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+hint(help)+'</label><select id="'+idOf(path)+'" data-bind="'+path+'" data-type="'+(typeof opts[0][0])+'">'+
+ opts.map(function(o){return '<option value="'+esc(o[0])+'"'+(String(v)===String(o[0])?' selected':'')+'>'+esc(o[1])+'</option>'}).join('')+'</select></div>'}
+function sw(path,dflt,label,help){var v=val(path,dflt);
+ return '<div class="field row" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+hint(help)+'</label><label class="sw"><input type="checkbox" id="'+idOf(path)+'" data-bind="'+path+'" data-type="boolean"'+(v?' checked':'')+'><span></span></label></div>'}
+function range(path,min,max,dflt,label,unit,help){var v=val(path,dflt);
+ return '<div class="field" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+hint(help)+'</label><div class="row"><input type="range" id="'+idOf(path)+'" min="'+min+'" max="'+max+'" value="'+v+'" data-bind="'+path+'" data-type="number" data-unit="'+unit+'"><span class="rangeval">'+v+unit+'</span></div></div>'}
+function text(path,label,help,attrs){return '<div class="field" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+hint(help)+'</label><input type="text" id="'+idOf(path)+'" data-bind="'+path+'" data-type="string" value="'+esc(val(path,''))+'" '+(attrs||'')+'></div>'}
+function card(title,sub,body){return '<section class="card"><h2>'+title+'</h2>'+(sub?'<p class="sub">'+sub+'</p>':'')+body+'</section>'}
+function chips(list,del){return '<div class="chips">'+(list||[]).map(function(c,i){return '<span class="chip">'+esc(c)+'<button type="button" aria-label="Remove '+esc(c)+'" data-'+del+'="'+i+'">×</button></span>'}).join('')+'</div>'}
+
+/* ------------------------------------------------------------ Display */
+var ALT=[['feet','Feet'],['meters','Metres'],['kilometers','Kilometres'],['nautical_miles','Nautical miles']],
+ VEL=[['mph','mph'],['knots','Knots'],['kmh','km/h'],['mps','m/s'],['mach','Mach']],
+ VR=[['fpm','ft/min'],['fps','ft/s'],['mph','mph'],['kmh','km/h'],['mps','m/s']],
+ DIST=[['miles','Miles'],['nautical_miles','Nautical miles'],['kilometers','Kilometres'],['meters','Metres'],['feet','Feet']];
+function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_time');
+ return '<div class="grid two">'+
+ card('Flight card','What each flight shows.',
+  seg(P+'title_text',[['airline','Airline'],['callsign','Callsign'],['registration','Registration']],'airline','Title')+
+  seg(P+'layout_template',[['DEFAULT','Logo'],['NO_LOGO','No logo'],['TECHNICAL','Technical']],'DEFAULT','Layout','Technical shows altitude, speed and heading')+
+  seg(P+'flight_display_speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],'normal','Time on each flight')+
+  seg(P+'max_flights_behavior',[['text','Count screen'],['indicator_led','Corner light'],['off','Nothing']],'text','More than five flights')+
+  seg(P+'loading_template',[['TEXT','Text'],['CLOCK','Clock'],['ELLIPSIS','Dots'],['BLANK','Blank']],'TEXT','No flights nearby'))+
+ '<div class="grid">'+
+ card('Brightness','',
+  range(P+'brightness_percent',1,100,15,'Brightness','%')+
+  seg('owned_config.scroll_speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],'normal','Long names scroll')+
+  sw(P+'border_enable',false,'Border','A coloured frame around each flight')+
+  (get(st.work,P+'border_enable')?range(P+'border_brightness_percent',0,100,100,'Border brightness','%'):''))+
+ card('Power','',
+  sw(P+'display_enabled',true,'Display on','Off leaves the wall dark; games and sign-in codes still show')+
+  '<div class="field row" data-field="'+P+'sleep_time"><label for="sleepOn">Sleep schedule<small>Dims the wall overnight</small></label><label class="sw"><input type="checkbox" id="sleepOn"'+(sleepOn?' checked':'')+'><span></span></label></div>'+
+  (sleepOn?'<div class="two-col">'+timeIn(P+'sleep_time.start','From')+timeIn(P+'sleep_time.end','Until')+'</div>'+
+   range(P+'sleep_time.sleep_brightness_percent',0,100,0,'Brightness while asleep','%','0 turns the panel off'):''))+
+ '</div>'+
+ card('Units','',
+  '<div class="two-col">'+sel(P+'metric_display.alt_b_unit',ALT,'meters','Altitude')+sel(P+'metric_display.vel_unit',VEL,'kmh','Speed')+
+  sel(P+'metric_display.vr_unit',VR,'kmh','Climb rate')+sel(P+'metric_display.dist_unit',DIST,'meters','Distance')+'</div>'+
+  seg(P+'metric_display.trk_unit',[['cardinal','Compass · NE'],['degrees','Degrees · 45°']],'degrees','Heading'))+
+ '</div>'}
+function timeIn(path,label){return '<div class="field" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+'</label><input type="time" id="'+idOf(path)+'" data-bind="'+path+'" data-type="string" value="'+esc(val(path,''))+'"></div>'}
+
+/* ------------------------------------------------------------ Clock */
+var LOCALES=[['en','English'],['es','Español'],['fr','Français'],['de','Deutsch'],['it','Italiano'],['pt','Português'],['nl','Nederlands'],['pl','Polski'],['sv','Svenska'],['no','Norsk'],['da','Dansk'],['fi','Suomi'],['cs','Čeština'],['ro','Română'],['hu','Magyar'],['el','Ελληνικά'],['tr','Türkçe'],['uk','Українська'],['ru','Русский']];
+var ZNAMES={'-600':'Hawaii','-540':'Alaska','-480':'Pacific','-420':'Mountain','-360':'Central','-300':'Eastern','-240':'Atlantic','-180':'Buenos Aires, São Paulo','0':'London, Lisbon','60':'Paris, Berlin','120':'Athens, Helsinki','180':'Istanbul, Moscow','240':'Dubai','330':'India','345':'Nepal','480':'Singapore, Beijing','540':'Tokyo, Seoul','570':'Adelaide','600':'Sydney','720':'Auckland'};
+function offsetName(m){var a=Math.abs(m);return 'UTC'+(m<0?'−':'+')+Math.floor(a/60)+(a%60?':'+String(a%60).padStart(2,'0'):'')+(ZNAMES[m]?' · '+ZNAMES[m]:'')}
+var OFFSETS=[];for(var m=-720;m<=840;m+=15)if(m%60===0||ZNAMES[m]||[-570,-210,210,270,390,525,630,765].indexOf(m)>=0)OFFSETS.push([m,offsetName(m)]);
+var DST=[['north_america','North America'],['europe','Europe'],['none','None']];
+function zoneOpts(path){var v=get(st.work,path);if(v!=null&&!OFFSETS.some(function(o){return o[0]===v}))return OFFSETS.concat([[v,offsetName(v)]]).sort(function(a,b){return a[0]-b[0]});return OFFSETS}
+function viewClock(){var P='display_config.',extras=get(st.work,P+'clock.additional_timezones')||[],
+  lines=(get(st.work,P+'clock.style')==='LARGE'?2:3)-(get(st.work,P+'clock.show_date')?1:0)-1,
+  fits=extras.length?Math.max(0,Math.min(extras.length,lines)):0;
+ return '<div class="grid two">'+
+ '<div class="grid">'+
+ card('Time zone','Used by the clock, dates and the sleep schedule.',
+  sel(P+'time_zone.standard_utc_offset_minutes',zoneOpts(P+'time_zone.standard_utc_offset_minutes'),0,'Standard time','Pick winter time; daylight saving is added below')+
+  seg(P+'time_zone.dst_rule',DST,'none','Daylight saving'))+
+ card('More time zones','Lines under the time, as many as fit: the clock has three lines (two when Large), the date first. The time then starts with its zone’s name.',
+  (extras.length&&fits<extras.length?'<p class="note" style="margin-top:0"><b>'+(fits?'Only the first fits':'None fit')+'</b> with the clock as set'+
+   (lines<extras.length?': '+(get(st.work,P+'clock.style')==='LARGE'?'choose Normal size':'')+(get(st.work,P+'clock.style')==='LARGE'&&get(st.work,P+'clock.show_date')?' or ':'')+(get(st.work,P+'clock.show_date')?'turn the date off':''):'')+' to see '+(extras.length>1?'them':'it')+'.</p>':'')+
+  extras.map(function(z,i){var p=P+'clock.additional_timezones.'+i;
+   return '<div class="item"><div class="head"><span>'+(esc(z.label)||'Zone '+(i+1))+'</span><button type="button" class="btn small danger" data-del-extra="'+i+'">Remove</button></div>'+
+   text(p+'.label','Label','Up to 15 characters, shown in capitals. Empty: the zone’s name (GMT, JST…)','maxlength="15" placeholder="London"')+
+   sel(p+'.time_zone.standard_utc_offset_minutes',zoneOpts(p+'.time_zone.standard_utc_offset_minutes'),0,'Standard time')+seg(p+'.time_zone.dst_rule',DST,'none','Daylight saving')+'</div>'}).join('')+
+  (extras.length<2?'<div class="btns"><button type="button" class="btn" id="add-extra">Add a time zone</button></div>':''))+
+ '</div>'+
+ card('Clock','Shown when no flights are nearby, if Display › No flights nearby is set to Clock.',
+  sw(P+'clock_is_24hr',false,'24-hour time')+sw(P+'clock_show_seconds',false,'Seconds')+
+  seg(P+'clock.style',[['DEFAULT','Normal'],['LARGE','Large']],'DEFAULT','Size')+
+  sw(P+'clock.show_date',false,'Date')+
+  seg(P+'date_format.order',[['month_day','Oct 19'],['day_month','19 Oct']],'month_day','Date order')+
+  sw(P+'date_format.show_weekday',false,'Weekday')+
+  sel(P+'locale',LOCALES,'en','Language','For month and weekday names'))+
+ '</div>'}
+
+/* ------------------------------------------------------------ Flights */
+var KTS=0.514444;
+function viewFlights(){var Q='request_config.',zones=get(st.work,Q+'radius_requests')||[],tracked=get(st.work,Q+'tracked_flights')||[],
+  community=get(st.work,'owned_config.flight_source')==='community';
+ return '<div class="grid two">'+
+ card('Flight data','',
+  seg('owned_config.flight_source',[['vendor','FlightWall'],['community','Community']],'vendor','Where flights come from')+
+  '<p class="note" style="margin-top:0">'+(community?
+   'Positions from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, routes from <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a>: free community services, for personal use. Routes are looked up by callsign and can be missing or out of date. Light aircraft and business jets count as other aircraft.'+
+   (tracked.length?' Tracked flights are found by their callsign, one lookup a minute; “Stop after it lands” lasts until the wall restarts.':''):
+   'The FlightWall service, with the wall\'s own account: routes, tracked flights and aircraft types.')+'</p>')+
+ card('Areas to watch','Up to five circles. Flights inside any of them are shown.',
+  zones.map(function(z,i){var p=Q+'radius_requests.'+i;
+   return '<div class="item" data-field="'+p+'"><div class="head"><span>'+(esc(z.name)||'Area '+(i+1))+'</span>'+(zones.length>1?'<button type="button" class="btn small danger" data-del-zone="'+i+'">Remove</button>':'')+'</div>'+
+   text(p+'.name','Name','','maxlength="31" placeholder="Home"')+
+   '<div class="field" data-field="'+p+'.latitude"><label for="loc'+i+'">Centre<small>Latitude, longitude · copy from a map app</small></label><input type="text" id="loc'+i+'" inputmode="text" autocomplete="off" data-loc="'+i+'" value="'+(z.latitude!=null?z.latitude+', '+z.longitude:'')+'" placeholder="51.4700, -0.4543"></div>'+
+   range(p+'.radius_km',1,250,50,'Radius',' km')+
+   '<div class="two-col">'+altIn(p+'.min_altitude','Lowest altitude')+altIn(p+'.max_altitude','Highest altitude')+'</div></div>'}).join('')+
+  (zones.length<5?'<div class="btns"><button type="button" class="btn" id="add-zone">Add an area</button></div>':''))+
+ '<div class="grid">'+
+ card('Which aircraft','',
+  sw(Q+'data_filters.show_commercial_ac',true,'Airliners')+sw(Q+'data_filters.show_smalljet_ac',true,'Business jets')+
+  sw(Q+'data_filters.show_light_ac',true,'Light aircraft')+sw(Q+'data_filters.show_heli_ac',true,'Helicopters')+
+  sw(Q+'data_filters.show_other_ac',true,'Other aircraft')+sw(Q+'data_filters.show_na_routes',true,'Flights with no known route')+
+  '<div class="two-col">'+speedIn('min_speed_mps','Slowest')+speedIn('max_speed_mps','Fastest')+'</div>'+
+  '<div class="field" data-field="'+Q+'data_filters.airline_icao_filter"><label for="airline-in">Only these airlines<small>Three-letter ICAO codes, e.g. DAL, AAL, UAL · empty shows all</small></label>'+
+  '<div class="add"><input type="text" id="airline-in" maxlength="3" placeholder="DAL" autocomplete="off" autocapitalize="characters"><button type="button" class="btn" id="airline-add">Add</button></div>'+
+  chips(get(st.work,Q+'data_filters.airline_icao_filter'),'del-airline')+'</div>')+
+ card('Tracked flights','Followed wherever they are, even outside your areas. Up to eight.',
+  (community?aeroView():'')+
+  tracked.map(function(t,i){var p=Q+'tracked_flights.'+i;
+   return '<div class="item" data-field="'+p+'"><div class="head"><span>'+esc(t.flight_number)+'</span><button type="button" class="btn small danger" data-del-tracked="'+i+'">Remove</button></div>'+
+   sw(p+'.auto_remove',true,'Stop after it lands')+sw(p+'.show_distance_travelled',false,'Show distance flown')+sw(p+'.show_metrics',false,'Show altitude and speed')+'</div>'}).join('')+
+  (tracked.length<8?'<div class="field"><label for="track-in">Track a flight<small>Airline code and number, e.g. DL1234</small></label><div class="add"><input type="text" id="track-in" maxlength="11" placeholder="DL1234" autocomplete="off" autocapitalize="characters"><button type="button" class="btn" id="track-add">Track</button></div></div>':''))+
+ '</div></div>'}
+/* Tracked flights on community data: times estimated by the wall, or from the
+ * owner's own FlightAware AeroAPI key (kept on the wall, never shown again) */
+function aeroView(){var on=get(st.work,'owned_config.tracking_source')==='aeroapi',t=st.track||{};
+ return seg('owned_config.tracking_source',[['community','Estimated'],['aeroapi','FlightAware']],'community','Flight times')+
+  (on?'<div class="field"><label for="aero-key">FlightAware AeroAPI key<small>From flightaware.com/aeroapi (Personal: $5 of free use a month). Kept on the wall.</small></label>'+
+   '<div class="add"><input type="password" id="aero-key" autocomplete="off" spellcheck="false" placeholder="'+(t.key_set?'Saved key ending '+esc(t.key_end):'Paste your key')+'"><button type="button" class="btn" id="aero-save">Save key</button></div>'+
+   (t.key_set?'<div class="btns"><button type="button" class="btn small danger" id="aero-del">Remove key</button></div>':'')+
+   '<p class="note" id="aero-state">'+esc(aeroText(t))+'</p></div>'+
+   '<p class="note">FlightAware gives the times and status, asked a few times a day per flight (about half a cent each); positions still come free from adsb.fi, once a minute while a flight is in the air. FlightAware\u2019s own position (one cent) only when adsb.fi cannot see the aircraft, every 5 minutes.</p>':
+   '<p class="note">The wall looks for each flight in turn, one lookup a minute. Take-off is when the wall saw it leave, or an estimate; arrival is worked out from distance and speed.</p>')}
+function aeroText(t){if(!t.key_set)return 'No key saved yet.';if(t.rejected)return 'FlightAware refused this key. Check it and save it again.';
+ var c=(t.flights_calls||0)*0.005+(t.position_calls||0)*0.01;
+ return t.in_use?'Since the wall started: '+(t.flights_calls||0)+' time checks, '+(t.position_calls||0)+' positions (about $'+c.toFixed(2)+').':'Key saved; used once the setting above is saved.'}
+function aeroLoad(){api('/api/tracking').then(function(t){st.track=t;var el=$('#aero-state');if(el)el.textContent=aeroText(t)}).catch(function(){})}
+function aeroWire(root){var sv=$('#aero-save',root),dl=$('#aero-del',root);if(!sv&&!$('[data-field="owned_config.tracking_source"]',root))return;
+ if(!st.track)aeroLoad();
+ if(sv)sv.onclick=function(){var k=$('#aero-key').value.trim();if(!k){toast('Paste the key first');return}sv.disabled=true;
+  api('/api/tracking',{method:'PUT',json:{aeroapi_key:k}}).then(function(t){st.track=t;toast('Key saved');render()}).catch(failed).then(function(){sv.disabled=false})};
+ if(dl)dl.onclick=function(){if(!confirm('Remove the FlightAware key from the wall?'))return;
+  api('/api/tracking',{method:'PUT',json:{aeroapi_key:null}}).then(function(t){st.track=t;toast('Key removed');render()}).catch(failed)}}
+function altIn(p,label){var v=get(st.work,p);return '<div class="field" data-field="'+p+'"><label for="'+idOf(p)+'">'+label+'<small>Optional</small></label><input type="number" id="'+idOf(p)+'" min="0" max="20000" step="100" inputmode="numeric" data-bind="'+p+'" data-type="int" value="'+(v!=null&&v>=0?v:'')+'"></div>'}
+function speedIn(k,label){var p='request_config.data_filters.'+k,v=get(st.work,p);
+ return '<div class="field" data-field="'+p+'"><label for="'+idOf(p)+'">'+label+'<small>Knots, optional</small></label><input type="number" id="'+idOf(p)+'" min="0" max="777" step="10" inputmode="numeric" data-speed="'+p+'" value="'+(v!=null&&v>=0?Math.round(v/KTS):'')+'"></div>'}
+
+/* ------------------------------------------------------------ Airports */
+var KINDS=[['iata','3-letter code'],['icao','4-letter code'],['name','Name']];
+function viewAirports(){var list=st.aliasWork,anchors=get(st.work,'display_config.anchor_airports')||[];
+ return '<div class="grid two">'+
+ card('Airport names','Show your own name for an airport. Owned firmware only. Up to 16.',
+  list.map(function(a,i){var ph=a.kind==='name'?'Donald J Trump Intl':a.kind==='iata'?'PBI':'KPBI';
+   return '<div class="item" data-alias="'+i+'"><div class="head"><span>'+(esc(a.from)||'New')+' → '+(esc(a.to)||'…')+'</span><button type="button" class="btn small danger" data-del-alias="'+i+'">Remove</button></div>'+
+   '<div class="field"><div class="label">Match by</div><div class="seg">'+KINDS.map(function(k){return '<button type="button" data-alias-kind="'+i+'" data-val="'+k[0]+'" aria-pressed="'+(a.kind===k[0])+'">'+k[1]+'</button>'}).join('')+'</div></div>'+
+   '<div class="two-col"><div class="field"><label for="af'+i+'">Feed shows</label><input type="text" id="af'+i+'" maxlength="'+(a.kind==='iata'?3:a.kind==='icao'?4:31)+'" autocomplete="off" data-alias-from="'+i+'" value="'+esc(a.from)+'" placeholder="'+ph+'"'+(a.kind==='name'?'':' style="text-transform:uppercase" autocapitalize="characters"')+'></div>'+
+   '<div class="field"><label for="at'+i+'">Show instead</label><input type="text" id="at'+i+'" maxlength="31" autocomplete="off" data-alias-to="'+i+'" value="'+esc(a.to)+'" placeholder="Palm Beach"></div></div>'+
+   '<div class="err" data-alias-err="'+i+'"></div></div>'}).join('')+
+  (list.length<16?'<div class="btns"><button type="button" class="btn" id="add-alias">Add an airport name</button></div>':''))+
+ card('Your airports','When a flight arrives at one of these, the card says “Arriving from” its origin; when it leaves one, “Departing to”. Up to eight.',
+  '<div class="field" data-field="display_config.anchor_airports"><label for="anchor-in">Add an airport<small>IATA or ICAO code, e.g. PBI or KPBI</small></label>'+
+  (anchors.length<8?'<div class="add"><input type="text" id="anchor-in" maxlength="4" placeholder="PBI" autocomplete="off" autocapitalize="characters"><button type="button" class="btn" id="anchor-add">Add</button></div>':'')+
+  chips(anchors,'del-anchor')+'</div>')+
+ '</div>'}
+
+/* ------------------------------------------------------------ Games (works signed in or not) */
+function viewGames(){return card('Games','Pong and Breakout on the wall, played from a phone.',
+ '<div class="field row"><label for="rot">“Scan to play” between screens<small>A QR to the controller, 15 s every 2 minutes</small></label><label class="sw"><input type="checkbox" id="rot" disabled><span></span></label></div>'+
+ '<div class="btns fill"><a class="btn primary" href="/play?g=p">Play Pong</a><a class="btn primary" href="/play?g=b">Play Breakout</a></div>'+
+ '<div class="btns fill"><button type="button" class="btn" id="qr">Show the QR on the wall · 30 s</button></div>'+
+ '<p class="note" id="gstate">&nbsp;</p>')}
+function gamesShow(s){st.games=s;var rot=$('#rot'),gs=$('#gstate');if(!rot)return;rot.checked=!!s.in_rotation;rot.disabled=false;
+ var g=s.game==='pong'?'Pong':s.game==='breakout'?'Breakout':'';
+ gs.textContent=(g?'Playing '+g+' · '+s.players+' phone'+(s.players===1?'':'s'):'No game on')+(s.qr_showing?' · QR on the wall':'')}
+function gamesWire(){var rot=$('#rot'),qr=$('#qr');if(!rot)return;
+ if(st.games)gamesShow(st.games);api('/api/games').then(gamesShow).catch(function(){$('#gstate').textContent='The wall did not answer'});
+ rot.onchange=function(){var want=rot.checked;rot.disabled=true;api('/api/games',{method:'POST',json:{in_rotation:want}}).then(gamesShow).catch(function(){rot.checked=!want;rot.disabled=false;toast('Not saved')})};
+ qr.onclick=function(){qr.disabled=true;api('/api/games',{method:'POST',json:{show_qr:true}}).then(function(s){gamesShow(s);toast('QR on the wall for 30 s')}).catch(function(){toast('The wall did not answer')}).then(function(){setTimeout(function(){qr.disabled=false},1500)})}}
+
+/* ------------------------------------------------------------ Device */
+function viewDevice(){return '<div class="grid two">'+
+ card('Flights feed','',
+  '<p style="margin:4px 0 0">'+esc(FEED[st.feed]||'Unknown')+' · '+(get(st.doc,'owned_config.flight_source')==='community'?'community data':'FlightWall data')+'</p><p class="note">Settings version '+st.rev+' · changes reach the wall within seconds</p>')+
+ card('FlightWall app','Settings you change in the FlightWall phone app reach the wall. A setting changed there replaces what is set here for that one setting; everything else stays as you set it here.',
+  sw('owned_config.follow_app',true,'Follow changes made in the app')+
+  '<p class="note" id="app-state">Checking…</p>'+
+  '<div class="btns"><button type="button" class="btn" id="reimport">Copy everything from the app</button></div>'+
+  '<p class="note">Replaces all settings here with the app’s, except airport names, Sync flights and where flight data comes from.</p>')+
+ card('Console','The wall\u2019s recent status lines: start-up, the feed, memory. Kept through restarts, not power cuts.',
+  '<div class="btns" style="margin-top:4px"><button type="button" class="btn small" id="log-refresh">Refresh</button><button type="button" class="btn small" id="log-copy">Copy</button>'+
+  '<label class="row" style="gap:8px;margin-left:auto"><span class="muted" style="font-size:14px">Live</span><span class="sw"><input type="checkbox" id="log-live"><span></span></span></label></div>'+
+  '<pre class="console" id="log">Loading…</pre>')+
+ card('Signed in','',
+  '<p class="note" style="margin-top:4px">Up to four browsers can be signed in. The oldest is signed out when a fifth signs in.</p>'+
+  '<div class="btns"><button type="button" class="btn" id="signout">Sign out this browser</button><button type="button" class="btn danger" id="signout-all">Sign out everywhere</button></div>')+
+ '</div>'}
+
+/* ------------------------------------------------------------ render */
+/* ------------------------------------------------------------ Stats */
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function dayName(d){var t=new Date(d*86400000);return t.getUTCDate()+' '+MON[t.getUTCMonth()]}
+function hourName(h){var x=((h%24)+24)%24;return (x%12||12)+(x<12?'a':'p')}
+function viewStats(){return '<div class="grid two" id="stats"><section class="card"><p class="muted" style="margin:0">Loading…</p></section></div>'}
+/* bars: [{label,value,watched 0..1}] for every slot, null value = not watched */
+function chart(bars,every){var W=320,H=120,top=6,base=96,n=bars.length,bw=W/n,max=1;
+ bars.forEach(function(b){if(b.value>max)max=b.value});
+ var g='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img">';
+ g+='<line x1="0" y1="'+base+'" x2="'+W+'" y2="'+base+'" stroke="var(--line)"/>';
+ bars.forEach(function(b,i){var x=i*bw;
+  if(b.value==null){g+='<rect x="'+x+'" y="'+top+'" width="'+(bw+0.5)+'" height="'+(base-top)+'" fill="var(--line)" opacity="0.55"><title>'+esc(b.label)+': not watched</title></rect>'}
+  else{var h=Math.max(b.value?2:0,(base-top)*b.value/max);
+   g+='<rect x="'+(x+bw*0.15)+'" y="'+(base-h)+'" width="'+(bw*0.7)+'" height="'+h+'" rx="1.5" fill="var(--accent)" opacity="'+(b.watched>=0.95?1:0.45)+'"><title>'+esc(b.label)+': '+b.value+' flights'+(b.watched<0.95?', watched '+Math.round(b.watched*100)+'%':'')+'</title></rect>'}
+  if(i%every===0)g+='<text x="'+(x+bw/2)+'" y="'+(base+14)+'" text-anchor="middle">'+esc(b.label)+'</text>'});
+ g+='<text x="'+W+'" y="10" text-anchor="end">'+max+'</text>';
+ return g+'</svg><div class="legend"><span><i style="background:var(--accent)"></i>Flights seen</span><span><i style="background:var(--accent);opacity:.45"></i>Partly watched</span><span><i style="background:var(--line)"></i>Not watched</span></div>'}
+function statsDraw(j){var el=$('#stats');if(!el)return;var S=j.stats||{hours:[],days:[]};
+ if(j.hour<0){el.innerHTML=card('Stats','','<p class="muted" style="margin:0">Waiting for the wall\u2019s clock to be set.</p>');return}
+ var hours={},days={};S.hours.forEach(function(h){hours[h[0]]=h});S.days.forEach(function(d){days[d[0]]=d});
+ var hb=[],db=[],i;
+ for(i=j.hour-47;i<=j.hour;i++){var h=hours[i];hb.push({label:hourName(i),value:h?h[1]:null,watched:h?h[2]/60:0})}
+ for(i=j.day-30;i<=j.day;i++){var d=days[i];db.push({label:String(new Date(i*86400000).getUTCDate()),value:d?d[1]:null,watched:d?d[2]/1440:0})}
+ var today=days[j.day],top=today?today[3]:[],mins=today?today[2]:0,most=top.length?top[0][1]:1;
+ var community=get(st.doc,'owned_config.flight_source')==='community';
+ el.innerHTML=
+  card('Today',dayName(j.day),
+   '<div class="big">'+(today?today[1]:0)+'</div><p class="muted" style="margin:2px 0 0">flights seen · watched '+Math.floor(mins/60)+' h '+(mins%60)+' min'+(top.length?' · most: '+esc(top[0][0]):'')+'</p>')+
+  card('Top airlines today','From the flight number; private and unknown aircraft are left out.',
+   top.length?'<ul class="bars">'+top.map(function(a){return '<li><b>'+esc(a[0])+'</b><span class="b" style="width:'+Math.max(4,100*a[1]/most)+'%"></span><span class="n">'+a[1]+'</span></li>'}).join('')+'</ul>':'<p class="muted" style="margin:0">None yet today.</p>')+
+  card('Last 48 hours','Flights seen each hour. A flight counts once until it has been gone 30 minutes.',chart(hb,6))+
+  card('Last 31 days','Flights seen each day.',chart(db,5))+
+  card('About these numbers','',
+   '<p class="note" style="margin-top:0">'+(community?'Every aircraft that passes your filters counts.':'With FlightWall data, each poll lists at most five flights; only those count, so busy hours read low.')+
+   ' Kept in the wall\u2019s memory: they start over when it restarts.</p>')}
+/* Console: plain text from /api/log, newest at the bottom. */
+/* Changes made in the FlightWall app: the last check, and a queued copy */
+function ago(t){var s=Math.max(0,Date.now()/1000-t);return s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<129600?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'}
+function appText(a){var r={ok:'Up to date with the app',network:'Could not reach FlightWall',refused:'The app’s answer could not be used',not_saved:'Not saved yet; trying again',never:'Not checked since the wall started'}[a.result]||'';
+ return r+(a.checked?' · checked '+ago(a.checked):'')+(a.changed_at?' · last change from the app '+ago(a.changed_at)+' ('+a.changed+(a.changed===1?' setting)':' settings)'):'')}
+/* opening the page asks the wall to check the app's settings (it limits how often) */
+function appAsk(){if(key)api('/api/settings/import?check=1').catch(function(){})}
+function appLoad(){var el=$('#app-state');if(!el)return;api('/api/settings/import').then(function(a){el.textContent=appText(a)}).catch(function(){el.textContent=''})}
+function appWatch(a,t0,btn,prev){var el=$('#app-state');if(el)el.textContent=appText(a);
+ if(a.pending&&Date.now()-t0<45000){setTimeout(function(){api('/api/settings/import').then(function(b){appWatch(b,t0,btn,prev)}).catch(function(){appWatch(a,t0,btn,prev)})},2000);return}
+ btn.disabled=false;
+ if(a.pending){toast('Still waiting for FlightWall; check back in a minute');return}
+ toast(a.result==='ok'?(a.changed_at!==prev?'Copied from the app':'Already the same as the app'):appText(a).split(' · ')[0]);
+ refresh(true)}
+function logLoad(){var el=$('#log');if(!el)return;
+ fetch('/api/log',{cache:'no-store',headers:{Authorization:'Bearer '+key}}).then(function(r){if(!r.ok)throw new Error('The wall answered '+r.status);return r.text()})
+ .then(function(t){var stick=el.scrollTop+el.clientHeight>=el.scrollHeight-8;el.textContent=t||'(empty)';if(stick||el.dataset.first!=='1'){el.dataset.first='1';requestAnimationFrame(function(){el.scrollTop=el.scrollHeight})}})
+ .catch(function(e){el.textContent=e.message})}
+function statsLoad(){if(st.tab!=='stats')return;api('/api/stats').then(statsDraw).catch(function(e){var el=$('#stats');if(el)el.innerHTML=card('Stats','','<p class="err">'+esc(e.message)+'</p>')})}
+/* ------------------------------------------------------------ Sync (owned; SYNC.md) */
+var LEG_TYPES=[['operating','Operating'],['deadhead','Deadhead'],['reserve','Reserve']];
+function pad2(n){return String(n).padStart(2,'0')}
+function localParts(iso){var d=new Date(iso);if(isNaN(d))return {date:'',time:''};return {date:d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()),time:pad2(d.getHours())+':'+pad2(d.getMinutes())}}
+function fromLocal(date,time){if(!date||!time)return null;var d=new Date(date+'T'+time);return isNaN(d)?null:d}
+function legLabel(l){var d=new Date(l.dep);return (isNaN(d)?'':d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})+' · ')+(l.al||'')+' '+(l.fn||'')}
+function syncSw(k,label,help){var id='sy_'+k;return '<div class="field row"><label for="'+id+'">'+label+hint(help)+'</label><label class="sw"><input type="checkbox" id="'+id+'" data-sync="'+k+'"'+(st.syncWork[k]?' checked':'')+'><span></span></label></div>'}
+function syncSeg(k,opts,label){var v=st.syncWork[k];return '<div class="field"><div class="label">'+label+'</div><div class="seg">'+opts.map(function(o){return '<button type="button" data-sync-set="'+k+'" data-val="'+o[0]+'" aria-pressed="'+(v===o[0])+'">'+o[1]+'</button>'}).join('')+'</div></div>'}
+function viewSync(){
+ if(!st.syncWork)return card('Sync','','<p class="muted" style="margin:0">Loading…</p>');
+ var w=st.syncWork,legs=w.legs,now=Date.now(),past=legs.filter(function(l){return new Date(l.arr).getTime()<now-1800000}).length;
+ return '<div class="grid two">'+
+ '<div class="grid">'+
+ card('Sync','Your trips on the wall, for the people at home: the flight in progress and what comes next. Times are this '+(/Mobi/.test(navigator.userAgent)?'phone':'computer')+'’s.',
+  syncSw('enabled','Show my trips on the wall')+
+  '<div class="btns fill"><button type="button" class="btn" id="sync-add">Add a flight</button><label class="btn" for="sync-ics">Import calendar file</label></div>'+
+  '<input type="file" id="sync-ics" accept=".ics,text/calendar" class="hidden">'+
+  '<p class="note">From a crew or calendar app: export or share the trips as an .ics file. You can check each flight before it is added.</p>'+
+  (st.syncImport?importView():''))+
+ card('Message home','Shown on the wall with the trip. One line.',
+  '<div class="field"><input type="text" id="sync-msg" maxlength="255" value="'+esc(w.message)+'" placeholder="Home Friday!"></div>')+
+ card('On the wall','',
+  syncSw('show_upcoming','Show upcoming flights')+
+  syncSeg('main_view',[['active','Trip card'],['message','Message']],'During a trip, show')+
+  syncSeg('upcoming_view',[['next','One at a time'],['list','As a list']],'Upcoming flights')+
+  syncSw('show_deadhead','Show deadhead legs')+syncSw('show_reserve','Show reserve days'))+
+ '</div>'+
+ card('Flights',legs.length?legs.length+' of 20'+(past?' · '+past+' finished <button type="button" class="btn small" id="sync-past" style="margin-left:6px">Remove finished</button>':''):'None yet.',
+  legs.map(function(l,i){var dp=localParts(l.dep),ap=localParts(l.arr);
+   return '<div class="item" data-leg="'+i+'"><div class="head"><span>'+esc(legLabel(l))+(l.canceled?' · <span style="color:var(--bad)">Canceled</span>':'')+'</span><button type="button" class="btn small danger" data-leg-del="'+i+'">Remove</button></div>'+
+   '<div class="two-col"><div class="field"><label>Airline<small>AA, DL, B6 or AAL</small></label><input type="text" maxlength="3" data-leg-f="al" data-i="'+i+'" value="'+esc(l.al)+'" placeholder="AA" style="text-transform:uppercase"></div>'+
+   '<div class="field"><label>Flight number</label><input type="text" maxlength="5" inputmode="numeric" data-leg-f="fn" data-i="'+i+'" value="'+esc(l.fn)+'" placeholder="1234"></div>'+
+   '<div class="field"><label>From</label><input type="text" maxlength="4" data-leg-f="orig" data-i="'+i+'" value="'+esc(l.orig)+'" placeholder="CLT" style="text-transform:uppercase"></div>'+
+   '<div class="field"><label>To</label><input type="text" maxlength="4" data-leg-f="dest" data-i="'+i+'" value="'+esc(l.dest)+'" placeholder="PBI" style="text-transform:uppercase"></div></div>'+
+   '<div class="field"><label>Date</label><input type="date" data-leg-t="date" data-i="'+i+'" value="'+dp.date+'"></div>'+
+   '<div class="two-col"><div class="field"><label>Departs</label><input type="time" data-leg-t="dep" data-i="'+i+'" value="'+dp.time+'"></div>'+
+   '<div class="field"><label>Arrives<small>Earlier than departure = next day</small></label><input type="time" data-leg-t="arr" data-i="'+i+'" value="'+ap.time+'"></div></div>'+
+   '<div class="field"><div class="seg">'+LEG_TYPES.map(function(t){return '<button type="button" data-leg-type="'+t[0]+'" data-i="'+i+'" aria-pressed="'+(l.type===t[0])+'">'+t[1]+'</button>'}).join('')+'</div></div>'+
+   '<div class="field row"><label>Canceled</label><label class="sw"><input type="checkbox" data-leg-c="'+i+'"'+(l.canceled?' checked':'')+'><span></span></label></div>'+
+   '<div class="err" data-leg-err="'+i+'"></div></div>'}).join(''))+
+ '</div>'}
+function sortLegs(){st.syncWork.legs.sort(function(a,b){return new Date(a.dep)-new Date(b.dep)})}
+function setTimes(l,date,dep,arr){var d=fromLocal(date,dep),a=fromLocal(date,arr);if(!d||!a)return false;if(a<=d)a=new Date(a.getTime()+86400000);
+ l.dep=d.toISOString().slice(0,16)+'Z';l.arr=a.toISOString().slice(0,16)+'Z';return true}
+function syncWire(root){
+ if(!$('#sync-add',root))return;
+ $$('[data-sync]',root).forEach(function(el){el.onchange=function(){st.syncWork[el.dataset.sync]=el.checked;changed()}});
+ $$('[data-sync-set]',root).forEach(function(b){b.onclick=function(){st.syncWork[b.dataset.syncSet]=b.dataset.val;changed();render()}});
+ $('#sync-msg',root).onchange=function(){st.syncWork.message=this.value.trim();changed()};
+ $('#sync-add',root).onclick=function(){if(st.syncWork.legs.length>=20){toast('20 flights at most');return}
+  var d=new Date(),h=(d.getHours()+1)%24,l={al:'',fn:'',orig:'',dest:'',type:'operating',canceled:false};
+  if(h===0)d=new Date(d.getTime()+86400000);                    /* today, leaving at the next full hour */
+  setTimes(l,d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()),pad2(h)+':00',pad2((h+2)%24)+':00');
+  st.syncWork.legs.push(l);changed();render();var f=$$('[data-leg-f="al"]');if(f.length)f[f.length-1].focus()};
+ var past=$('#sync-past',root);if(past)past.onclick=function(){var now=Date.now();st.syncWork.legs=st.syncWork.legs.filter(function(l){return new Date(l.arr).getTime()>=now-1800000});changed();render()};
+ $$('[data-leg-del]',root).forEach(function(b){b.onclick=function(){st.syncWork.legs.splice(+b.dataset.legDel,1);changed();render()}});
+ $$('[data-leg-f]',root).forEach(function(el){el.onchange=function(){var l=st.syncWork.legs[+el.dataset.i];l[el.dataset.legF]=el.value.trim().toUpperCase();el.value=l[el.dataset.legF];changed()}});
+ $$('[data-leg-t]',root).forEach(function(el){el.onchange=function(){var i=+el.dataset.i,item=el.closest('.item'),l=st.syncWork.legs[i];
+   var date=$('[data-leg-t="date"]',item).value,dep=$('[data-leg-t="dep"]',item).value,arr=$('[data-leg-t="arr"]',item).value;
+   if(setTimes(l,date,dep,arr)){sortLegs();changed();render()}}});
+ $$('[data-leg-type]',root).forEach(function(b){b.onclick=function(){st.syncWork.legs[+b.dataset.i].type=b.dataset.legType;changed();render()}});
+ $$('[data-leg-c]',root).forEach(function(el){el.onchange=function(){st.syncWork.legs[+el.dataset.legC].canceled=el.checked;changed();render()}});
+ $('#sync-ics',root).onchange=function(){var f=this.files[0];if(!f)return;f.text().then(function(t){st.syncImport=parseIcs(t);if(!st.syncImport.length)toast('No flights found in that file');render()})};
+ $$('[data-imp]',root).forEach(function(el){el.onchange=function(){st.syncImport[+el.dataset.imp].take=el.checked}});
+ var ia=$('#imp-add',root);if(ia)ia.onclick=function(){var room=20-st.syncWork.legs.length,added=0;
+  st.syncImport.forEach(function(x){if(!x.take||added>=room)return;
+   if(st.syncWork.legs.some(function(l){return l.al===x.leg.al&&l.fn===x.leg.fn&&l.dep===x.leg.dep}))return;
+   st.syncWork.legs.push(x.leg);added++});
+  sortLegs();st.syncImport=null;changed();render();toast(added?added+' flight'+(added>1?'s':'')+' added · press Save':'Nothing new to add')};
+ var ic=$('#imp-cancel',root);if(ic)ic.onclick=function(){st.syncImport=null;render()};
+}
+function syncProblems(){var bad=0;$$('[data-leg-err]').forEach(function(e){e.textContent=''});
+ st.syncWork.legs.forEach(function(l,i){var why='';
+  if(!/^[A-Z0-9]{2,3}$/.test(l.al))why='Airline: 2 or 3 letters, e.g. AA';
+  else if(!/^[0-9][0-9A-Z]{0,4}$/.test(l.fn))why='Flight number: digits, e.g. 1234';
+  else if(l.orig&&!/^[A-Z0-9]{3,4}$/.test(l.orig)||l.dest&&!/^[A-Z0-9]{3,4}$/.test(l.dest))why='Airports: 3 or 4 letter codes';
+  if(why){bad++;var e=$('[data-leg-err="'+i+'"]');if(e)e.textContent=why}});
+ return bad}
+
+/* .ics: one event per flight. Flight number, route and leg type are read from
+ * the title (and location/description); time zones via the browser's own. */
+function icsUnfold(t){return t.replace(/\r\n[ \t]|\n[ \t]/g,'')}
+function zonedToUtc(y,mo,d,h,mi,s,tz){var guess=Date.UTC(y,mo-1,d,h,mi,s);
+ try{for(var k=0;k<2;k++){var p={};new Intl.DateTimeFormat('en-US',{timeZone:tz,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(new Date(guess)).forEach(function(x){p[x.type]=+x.value});
+   var asUtc=Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second);guess+=Date.UTC(y,mo-1,d,h,mi,s)-asUtc}}catch(e){return null}
+ return new Date(guess)}
+function icsTime(prop,val){var m=/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z?)$/.exec(val);if(!m)return null;
+ var a=[+m[1],+m[2],+m[3],+m[4],+m[5],+(m[6]||0)];
+ if(m[7])return new Date(Date.UTC(a[0],a[1]-1,a[2],a[3],a[4],a[5]));
+ var tz=/TZID=([^;:]+)/.exec(prop);if(tz)return zonedToUtc(a[0],a[1],a[2],a[3],a[4],a[5],tz[1].replace(/"/g,''));
+ return new Date(a[0],a[1]-1,a[2],a[3],a[4],a[5])}
+function parseIcs(text){var out=[],ev=null;
+ icsUnfold(text).split(/\r?\n/).forEach(function(line){
+  if(line==='BEGIN:VEVENT'){ev={};return}if(line==='END:VEVENT'){if(ev)out.push(ev);ev=null;return}
+  if(!ev)return;var i=line.indexOf(':');if(i<0)return;var prop=line.slice(0,i),val=line.slice(i+1).replace(/\\,/g,',').replace(/\\n/gi,' ');
+  var name=prop.split(';')[0].toUpperCase();
+  if(name==='DTSTART'||name==='DTEND')ev[name]=icsTime(prop,val);else if(name==='SUMMARY'||name==='LOCATION'||name==='DESCRIPTION'||name==='STATUS')ev[name]=(ev[name]||'')+' '+val});
+ var now=Date.now();
+ return out.map(function(e){var text=((e.SUMMARY||'')+' '+(e.LOCATION||'')+' '+(e.DESCRIPTION||'')).toUpperCase();
+   var f=/\b([A-Z]{2,3}|[A-Z][0-9]|[0-9][A-Z])\s?([0-9]{1,4}[A-Z]?)\b/.exec(text),r=/\b([A-Z]{3,4})\s*(?:-|–|—|→|>|\bTO\b)\s*([A-Z]{3,4})\b/.exec(text);
+   var type=/\b(DH|DHD|DEADHEAD|DEAD HEAD|PAX)\b/.test(text)?'deadhead':/\b(RES|RSV|RESERVE)\b/.test(text)?'reserve':'operating';
+   var leg={al:f?f[1]:'',fn:f?f[2]:'',orig:r?r[1]:'',dest:r?r[2]:'',type:type,canceled:/CANCEL/.test(e.STATUS||''),dep:'',arr:''};
+   var ok=e.DTSTART&&e.DTEND&&e.DTEND>e.DTSTART&&e.DTEND-e.DTSTART<=86400000;
+   if(ok){leg.dep=e.DTSTART.toISOString().slice(0,16)+'Z';leg.arr=e.DTEND.toISOString().slice(0,16)+'Z'}
+   var why=!ok?'no usable times':!f?'no flight number found':e.DTEND<now?'already over':'';
+   return {leg:leg,title:(e.SUMMARY||'').trim(),why:why,take:!why}})
+ .filter(function(x){return x.leg.dep||x.title}).slice(0,60)}
+function importView(){var list=st.syncImport;
+ return '<div class="item" style="margin-top:12px"><div class="head"><span>From the file: '+list.length+' event'+(list.length===1?'':'s')+'</span></div>'+
+  list.map(function(x,i){return '<div class="field row"><label for="imp'+i+'">'+esc(x.leg.al+' '+x.leg.fn+(x.leg.orig?' · '+x.leg.orig+'→'+x.leg.dest:''))+
+   '<small>'+esc(x.title)+(x.leg.dep?' · '+new Date(x.leg.dep).toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'')+(x.why?' · '+x.why:'')+
+   (x.leg.type!=='operating'?' · '+x.leg.type:'')+(x.leg.canceled?' · canceled':'')+'</small></label><label class="sw"><input type="checkbox" id="imp'+i+'" data-imp="'+i+'"'+(x.take?' checked':'')+(x.why&&x.why!=='already over'?' disabled':'')+'><span></span></label></div>'}).join('')+
+  '<div class="btns"><button type="button" class="btn primary" id="imp-add">Add the ticked flights</button><button type="button" class="btn" id="imp-cancel">Cancel</button></div></div>'}
+function syncLoad(){if(!key)return;api('/api/sync').then(function(j){st.sync=j;st.syncWork=clone(j);changed();if(st.tab==='sync')render()}).catch(function(){})}
+var VIEWS={display:viewDisplay,clock:viewClock,flights:viewFlights,airports:viewAirports,sync:viewSync,stats:viewStats,games:viewGames,device:viewDevice};
+function render(){var m=$('#main'),y=window.scrollY;
+ if(!(key&&st.doc)){m.innerHTML=viewGames();gamesWire();return}
+ m.innerHTML=(VIEWS[st.tab]||viewDisplay)();wire(m);gamesWire();statsLoad();window.scrollTo(0,y)}
+function changed(){st.dirty=!same(st.work,st.base)||!same(st.aliasWork,st.aliases.aliases)||!!(st.sync&&!same(st.syncWork,st.sync));$('#bar').classList.toggle('show',st.dirty)}
+function clearBad(el){var f=el.closest('.bad');if(f)f.classList.remove('bad')}
+
+/* list helpers */
+function listAt(path){var l=get(st.work,path);if(!Array.isArray(l)){l=[];set(st.work,path,l)}return l}
+function codeAdder(root,inId,btnId,path,re,msg,max,keep){var input=$('#'+inId,root),b=$('#'+btnId,root);if(!b)return;
+ function add(){var c=input.value.toUpperCase().replace(/\s/g,'');if(!re.test(c)){toast(msg);input.focus();return}
+  var l=listAt(path);if(l.indexOf(c)<0){if(l.length>=max){toast('That is the most allowed');return}l.push(c)}
+  input.value='';changed();render();var again=$('#'+inId);if(again&&keep)again.focus()}
+ b.onclick=add;input.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();add()}}}
+
+/* text edits update the card heading in place, so focus and Tab order survive */
+function heading(el,t){var h=el.closest('.item');h=h&&$('.head span',h);if(h&&t)h.textContent=t}
+function aliasHead(el,a){var h=$('.head span',el.closest('.item'));if(h)h.textContent=(a.from||'New')+' → '+(a.to||'…')}
+
+function wire(root){
+ $$('[data-set]',root).forEach(function(b){b.onclick=function(){set(st.work,b.dataset.set,JSON.parse(b.dataset.val));changed();render()}});
+ $$('[data-bind]',root).forEach(function(el){var live=el.type==='range';
+  el.addEventListener(live?'input':'change',function(){var t=el.dataset.type,v;clearBad(el);
+   if(t==='boolean')v=el.checked;else if(t==='number')v=Number(el.value);
+   else if(t==='int')v=el.value===''?undefined:Math.max(0,Math.min(20000,Math.round(Number(el.value))));
+   else v=el.value.trim()===''&&/\.(name|label)$/.test(el.dataset.bind)?undefined:el.value.trim();
+   set(st.work,el.dataset.bind,v);
+   if(live)el.nextElementSibling.textContent=v+el.dataset.unit;
+   changed();if(t==='boolean')render();else if(/\.(name|label)$/.test(el.dataset.bind))heading(el,v||'')})});
+ var so=$('#sleepOn',root);if(so)so.onchange=function(){set(st.work,'display_config.sleep_time',so.checked?{start:'23:00',end:'07:00',sleep_brightness_percent:0}:undefined);changed();render()};
+ $$('[data-speed]',root).forEach(function(el){el.onchange=function(){clearBad(el);set(st.work,el.dataset.speed,el.value===''?undefined:Math.min(400,Math.max(0,Math.round(Number(el.value)*KTS))));changed()}});
+ $$('[data-loc]',root).forEach(function(el){el.onchange=function(){var m=el.value.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/),p='request_config.radius_requests.'+el.dataset.loc,f=el.closest('.field');
+   var lat=m&&parseFloat(m[1]),lon=m&&parseFloat(m[2]);
+   if(!m||Math.abs(lat)>90||Math.abs(lon)>180){f.classList.add('bad');toast('Type latitude, then longitude, e.g. 51.47, -0.45');return}
+   f.classList.remove('bad');set(st.work,p+'.latitude',Math.round(lat*1e5)/1e5);set(st.work,p+'.longitude',Math.round(lon*1e5)/1e5);changed()}});
+ var az=$('#add-zone',root);if(az)az.onclick=function(){listAt('request_config.radius_requests').push({radius_km:25});changed();render();var l=$$('[data-loc]');if(l.length)l[l.length-1].focus()};
+ $$('[data-del-zone]',root).forEach(function(b){b.onclick=function(){listAt('request_config.radius_requests').splice(+b.dataset.delZone,1);changed();render()}});
+ var ax=$('#add-extra',root);if(ax)ax.onclick=function(){listAt('display_config.clock.additional_timezones').push({label:'',time_zone:{standard_utc_offset_minutes:0,dst_rule:'none'}});changed();render()};
+ $$('[data-del-extra]',root).forEach(function(b){b.onclick=function(){listAt('display_config.clock.additional_timezones').splice(+b.dataset.delExtra,1);changed();render()}});
+ codeAdder(root,'airline-in','airline-add','request_config.data_filters.airline_icao_filter',/^[A-Z]{3}$/,'Airline codes are three letters, e.g. DAL',32,true);
+ $$('[data-del-airline]',root).forEach(function(b){b.onclick=function(){listAt('request_config.data_filters.airline_icao_filter').splice(+b.dataset.delAirline,1);changed();render()}});
+ codeAdder(root,'anchor-in','anchor-add','display_config.anchor_airports',/^[A-Z0-9]{3,4}$/,'Airport codes are 3 or 4 letters, e.g. PBI',8,true);
+ $$('[data-del-anchor]',root).forEach(function(b){b.onclick=function(){listAt('display_config.anchor_airports').splice(+b.dataset.delAnchor,1);changed();render()}});
+ var ti=$('#track-in',root),ta=$('#track-add',root);if(ta){var addT=function(){var n=ti.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+   if(n.length<2||n.length>11){toast('Type the airline code and number, e.g. DL1234');ti.focus();return}
+   var l=listAt('request_config.tracked_flights');if(!l.some(function(t){return t.flight_number===n}))l.push({flight_number:n,auto_remove:true,show_distance_travelled:false,show_metrics:false});
+   changed();render()};ta.onclick=addT;ti.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();addT()}}}
+ $$('[data-del-tracked]',root).forEach(function(b){b.onclick=function(){listAt('request_config.tracked_flights').splice(+b.dataset.delTracked,1);changed();render()}});
+ var al=$('#add-alias',root);if(al)al.onclick=function(){st.aliasWork.push({kind:'iata',from:'',to:''});changed();render();var f=$$('[data-alias-from]');if(f.length)f[f.length-1].focus()};
+ $$('[data-del-alias]',root).forEach(function(b){b.onclick=function(){st.aliasWork.splice(+b.dataset.delAlias,1);changed();render()}});
+ $$('[data-alias-kind]',root).forEach(function(b){b.onclick=function(){var a=st.aliasWork[+b.dataset.aliasKind];a.kind=b.dataset.val;if(a.kind!=='name')a.from=a.from.toUpperCase();changed();render()}});
+ $$('[data-alias-from]',root).forEach(function(el){el.onchange=function(){var a=st.aliasWork[+el.dataset.aliasFrom];a.from=a.kind==='name'?el.value.trim():el.value.trim().toUpperCase();el.value=a.from;changed();aliasHead(el,a)}});
+ $$('[data-alias-to]',root).forEach(function(el){el.onchange=function(){var a=st.aliasWork[+el.dataset.aliasTo];a.to=el.value.trim();changed();aliasHead(el,a)}});
+ aeroWire(root);
+ var ri=$('#reimport',root);if(ri){appLoad();ri.onclick=function(){if(!confirm('Replace all settings here with the ones in the FlightWall app?'))return;
+   ri.disabled=true;toast('Asking the FlightWall app…');
+   api('/api/settings/import',{method:'POST'}).then(function(a){appWatch(a,Date.now(),ri,a.changed_at)}).catch(function(e){ri.disabled=false;failed(e)})}}
+ syncWire(root);
+ var lr=$('#log-refresh',root);if(lr){lr.onclick=logLoad;$('#log-copy',root).onclick=function(){var t=$('#log').textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){toast('Copied')},function(){toast('Select the text to copy')})};
+   var ll=$('#log-live',root);ll.checked=st.logLive;ll.onchange=function(){st.logLive=ll.checked};logLoad()}
+ var so2=$('#signout',root);if(so2)so2.onclick=function(){signedOut();toast('Signed out')};
+ var se=$('#signout-all',root);if(se)se.onclick=function(){if(!confirm('Sign out every browser? Each will need a new code from the wall.'))return;
+   api('/api/pair/forget',{method:'POST'}).then(function(){signedOut();toast('Signed out everywhere')}).catch(failed)};
+}
+
+/* ------------------------------------------------------------ save */
+/* The firmware accepts only the keys it knows (SETTINGS.md); stored vendor
+ * documents can carry others, so whatever is sent is trimmed to these. */
+var KEYS={
+ metric_display:['alt_b_unit','vel_unit','vr_unit','trk_unit','dist_unit'],time_zone:['standard_utc_offset_minutes','dst_rule'],
+ clock:['style','show_date','additional_timezones'],date_format:['order','show_weekday'],sleep_time:['start','end','sleep_brightness_percent'],
+ additional_timezones:['label','time_zone'],
+ radius_requests:['latitude','longitude','radius_km','min_altitude','max_altitude','name'],
+ data_filters:['show_light_ac','show_heli_ac','show_commercial_ac','show_smalljet_ac','show_other_ac','show_na_routes','min_speed_mps','max_speed_mps','airline_icao_filter'],
+ tracked_flights:['flight_number','auto_remove','show_distance_travelled','show_metrics']};
+function trim(k,v){var ks=KEYS[k];if(!ks||v==null)return v;
+ if(Array.isArray(v))return v.map(function(x){return pick(ks,x)});return pick(ks,v)}
+/* vendor documents use -1 for an unset limit; the firmware wants it left out */
+var LIMITS={min_speed_mps:1,max_speed_mps:1,min_altitude:1,max_altitude:1};
+function pick(ks,o){var c={};ks.forEach(function(k){if(o[k]!==undefined&&o[k]!==null&&!(LIMITS[k]&&o[k]<0))c[k]=trim(k,o[k])});return c}
+var EDITABLE={display_config:['layout_template','loading_template','title_text','flight_display_speed','max_flights_behavior','metric_display','border_enable','border_brightness_percent','brightness_percent','anchor_airports','time_zone','clock_is_24hr','clock_show_seconds','clock','date_format','locale','display_enabled','sleep_time'],
+ request_config:['radius_requests','data_filters','tracked_flights'],
+ owned_config:['flight_source','follow_app','tracking_source','scroll_speed']};
+function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
+  EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
+  if(e.radius_requests===null)delete e.radius_requests;
+  if(Object.keys(e).length)out[sec]=e});
+ return out}
+function aliasProblems(){var seen={},n=0;$$('[data-alias-err]').forEach(function(e){e.textContent=''});
+ st.aliasWork.forEach(function(a,i){var why='';
+  if(!a.from||!a.to)why='Fill in both boxes, or remove this one.';
+  else if(a.kind==='iata'&&!/^[A-Z]{3}$/.test(a.from))why='A 3-letter code, letters only.';
+  else if(a.kind==='icao'&&!/^[A-Z]{4}$/.test(a.from))why='A 4-letter code, letters only.';
+  else if(!/^[\x20-\x7e]+$/.test(a.from+a.to))why='Plain letters only — no accents or emoji.';
+  else if(seen[a.kind+'|'+a.from])why='This one is already in the list.';
+  seen[a.kind+'|'+a.from]=1;
+  if(why){n++;var e=$('[data-alias-err="'+i+'"]');if(e)e.textContent=why}});
+ return n}
+function failed(e){if(e.status===409){toast('Changed from another browser · reloaded');refresh(true);return}toast(e.message)}
+function markField(f){if(!f)return;var parts=f.split('.'),el=null;
+ while(parts.length&&!el){el=$('[data-field="'+parts.join('.')+'"]');parts.pop()}
+ if(!el){var tab=/^(request|owned)_config/.test(f)?'flights':/anchor/.test(f)?'airports':/time_zone|clock|date_format|locale/.test(f)?'clock':'display';
+  if(tab!==st.tab){st.tab=tab;nav();render();return markField(f)}return}
+ el.classList.add('bad');el.scrollIntoView({block:'center',behavior:'smooth'})}
+$('#bar-discard').onclick=function(){st.work=clone(st.base);st.aliasWork=clone(st.aliases.aliases);if(st.sync)st.syncWork=clone(st.sync);st.syncImport=null;changed();render()};
+$('#bar-save').onclick=function(){var btn=this;$$('.bad').forEach(function(e){e.classList.remove('bad')});
+ var e=edits(),settingsChanged=Object.keys(e).length>0,aliasChanged=!same(st.aliasWork,st.aliases.aliases),syncChanged=!!(st.sync&&!same(st.syncWork,st.sync));
+ if(syncChanged&&syncProblems()){if(st.tab!=='sync'){st.tab='sync';nav();render();syncProblems()}toast('Check the flights');return}
+ if(aliasChanged&&aliasProblems()){if(st.tab!=='airports'){st.tab='airports';nav();render();aliasProblems()}toast('Check the airport names');return}
+ var zones=get(st.work,'request_config.radius_requests')||[];
+ if(zones.some(function(z){return z.latitude==null})){toast('Every area needs a centre');markField('request_config.radius_requests');return}
+ btn.disabled=true;
+ var keepAliases=st.aliasWork,p=Promise.resolve();
+ if(settingsChanged)p=p.then(function(){return api('/api/settings',{method:'PUT',headers:{'If-Match':String(st.rev)},json:e}).then(function(j){loaded(j,true);st.aliasWork=keepAliases})});
+ if(aliasChanged)p=p.then(function(){return api('/api/aliases',{method:'PUT',json:{revision:st.aliases.revision,aliases:keepAliases}}).then(function(j){loaded(j)})});
+ if(syncChanged){var keepSync=st.syncWork;p=p.then(function(){return api('/api/sync',{method:'PUT',json:keepSync}).then(function(j){st.sync=j;st.syncWork=clone(j)})})}
+ p.then(function(){changed();render();toast('Saved · on the wall now')})
+  .catch(function(err){if(err.status===400&&err.body&&err.body.field!==undefined){toast(err.message);markField(err.body.field)}else failed(err)})
+  .then(function(){btn.disabled=false;changed()})};
+
+/* ------------------------------------------------------------ load */
+function loaded(j,quiet){if(!st.appAsked){st.appAsked=1;appAsk()}st.rev=j.revision;st.doc=j.settings||{};
+ ['display_config','request_config','owned_config'].forEach(function(k){if(!st.doc[k])st.doc[k]={}});
+ var rc=st.doc.request_config;
+ /* an old single radius_request shows as the first area; it is sent (and
+  * replaced by radius_requests) only once the areas are edited */
+ st.base=clone(st.doc);
+ if(!rc.radius_requests&&rc.radius_request)st.base.request_config.radius_requests=[trim('radius_requests',rc.radius_request)];
+ st.work=clone(st.base);
+ st.aliases=j.aliases||{revision:0,aliases:[]};st.aliasWork=clone(st.aliases.aliases);st.feed=j.feed;
+ changed();if(!quiet)show();status();if(!st.sync)syncLoad()}
+function refresh(force){if(!key)return;api('/api/settings').then(function(j){if(force||(!st.dirty&&j.revision!==st.rev)||(!st.dirty&&j.aliases&&j.aliases.revision!==st.aliases.revision))loaded(j);else{st.feed=j.feed;status()}}).catch(function(){})}
+/* With a key saved, a wall that does not answer (restarting, out of reach)
+ * means "keep trying", never "sign in again": only a 401 forgets the key. */
+var retryTimer=0;
+function load(){clearTimeout(retryTimer);if(!key){show();return}
+ api('/api/settings').then(function(j){loaded(j)}).catch(function(e){if(e.status!==401&&key)retryTimer=setTimeout(load,3000);show()})}
+function show(){var signed=!!(key&&st.doc),waiting=!!key&&!st.doc;
+ $('#signin').classList.toggle('hidden',signed||waiting);$('#wait').classList.toggle('hidden',!waiting);$('#nav').classList.toggle('hidden',!signed);
+ if(!signed&&!waiting){$('#si-step1').classList.remove('hidden');$('#si-step2').classList.add('hidden')}
+ if(signed)nav();render();status();$('#bar').classList.toggle('show',st.dirty)}
+window.addEventListener('beforeunload',function(e){if(st.dirty){e.preventDefault();e.returnValue=''}});
+document.addEventListener('visibilitychange',function(){if(!document.hidden){refresh();appAsk()}});
+load();
+setInterval(function(){refresh();if(st.tab==='games'||!st.doc)api('/api/games').then(gamesShow).catch(function(){})},10000);
+setInterval(statsLoad,60000);
+setInterval(function(){if(st.tab==='device'&&st.logLive)logLoad()},10000);
+})();
+</script>
+</body>
+</html>

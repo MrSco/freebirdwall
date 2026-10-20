@@ -1,0 +1,2 @@
+# Kept byte for byte: the build checks the bundle against its pinned SHA-256.
+vendor/* -text

@@ -1,0 +1,64 @@
+# --- Board identity: must match the installed stock image header ---------------
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+# No PSRAM on this controller (measured on hardware). Leave SPIRAM disabled.
+
+# --- Recovery ------------------------------------------------------------------
+# The installed bootloader turns an unconfirmed image into ABORTED and returns
+# to the prior slot. The app side of that contract needs this option.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# --- Console: the board's USB is the chip's built-in USB-Serial/JTAG ------------
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# --- Size/RAM posture ------------------------------------------------------------
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_BT_ENABLED=n
+# Matches the stock Arduino runtime, so 1 ms pauses are real 1 ms pauses.
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Wi-Fi buffers: modest, explicit. Static RX buffers are permanent heap; dynamic
+# ones are allocated on demand. Tuning these is measured work, not guesswork:
+# the size report shows their static share, and the board probe their runtime.
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+CONFIG_ESP32_WIFI_RX_BA_WIN=6
+
+# --- Installability hardening (needed before Wi-Fi install) -------------------
+# A stuck task must reset the chip: a reset of an unconfirmed image is what
+# makes the bootloader roll back. Without this the task WDT only prints.
+CONFIG_ESP_TASK_WDT_PANIC=y
+# Full RF calibration every boot instead of reading/writing calibration data in
+# NVS, so this firmware never writes NVS at all (stock keeps its own copy).
+CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=n
+
+# --- Panel ------------------------------------------------------------------------
+# HUB75 library without Arduino/Adafruit GFX: it then depends only on esp_lcd
+# and driver. Drawing primitives (pixels, lines, rects, fills) remain available.
+CONFIG_ESP32_HUB75_USE_GFX=n
+
+# --- Setup mode (SETUP.md) ------------------------------------------------------------
+# The stock setup server is HTTPS with the board's identity certificate.
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+
+# Wi-Fi and access-point event handlers (wifi_link.c, setup_server.c) run on
+# the system event task; the board run left 728 bytes at the default 2304.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=3584
+
+# Games controller (main/games_server.c): phones send input over a WebSocket.
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# Three HTTP servers (setup, dashboard/games, owner updates) plus TLS and DNS.
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# Browser requests to the dashboard (Authorization, If-Match, Origin, Referer...)
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

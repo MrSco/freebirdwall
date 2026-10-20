@@ -1,0 +1,13 @@
+# Compile-only ESP32-S3 source-library check, not a firmware/flash build.
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR xtensa)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES FW_XTENSA_TOOLCHAIN_DIR)
+if(NOT FW_XTENSA_TOOLCHAIN_DIR)
+  message(FATAL_ERROR "Set FW_XTENSA_TOOLCHAIN_DIR to the installed compiler bin directory")
+endif()
+set(CMAKE_C_COMPILER "${FW_XTENSA_TOOLCHAIN_DIR}/xtensa-esp32s3-elf-gcc.exe")
+set(CMAKE_CXX_COMPILER "${FW_XTENSA_TOOLCHAIN_DIR}/xtensa-esp32s3-elf-g++.exe")
+set(CMAKE_C_FLAGS_INIT "-Os -ffunction-sections -fdata-sections")
+set(CMAKE_CXX_FLAGS_INIT "-Os -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)

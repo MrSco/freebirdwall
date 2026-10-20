@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x2='0' y2='1'%3E%3Cstop stop-color='%230ea5ff'/%3E%3Cstop offset='1' stop-color='%230858e0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Cpath transform='translate(12 12) scale(.76)' fill='%23fff' fill-rule='evenodd' d='M86 100 83 100 54 78 37 83 22 86 12 90 6 91 8 89 14 84 5 72 6 71 8 70 11 70 23 77 26 78 38 73 46 69 47 68 46 66 44 64 28 57 24 55 20 50 17 45 29 49 35 50 37 49 24 46 18 43 15 41 11 36 8 28 8 25 12 28 25 35 30 37 31 37 20 30 14 26 10 23 5 13 4 5 4 0 11 7 19 14 51 35 59 41 64 48 65 50 65 56 76 45 79 44 85 43 88 45 91 46 92 46 96 48 90 51 86 55 84 59 77 66 71 70 85 93 86 96Z'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>FreeBirdWall Games</title>
+<style>
+:root{--bg:#0b0d12;--panel:#151922;--line:#262c38;--text:#e8ebf1;--dim:#8a93a6;--accent:#26c6da;--warm:#ffb020}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:16px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overscroll-behavior:none}
+body{display:flex;flex-direction:column;padding:max(12px,env(safe-area-inset-top)) 16px max(12px,env(safe-area-inset-bottom))}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h1{font-size:18px;margin:0}
+#who{color:var(--dim);font-size:14px}
+#score{font:700 28px/1.2 ui-monospace,Menlo,Consolas,monospace;text-align:center;margin:10px 0 4px;min-height:34px}
+#note{color:var(--dim);text-align:center;font-size:14px;min-height:20px}
+.games{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+button{font:600 17px system-ui,sans-serif;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 10px;touch-action:manipulation}
+button:active{background:#202634}
+button.on{border-color:var(--accent);color:var(--accent)}
+#pad{flex:1;min-height:200px;margin:8px 0;border:1px solid var(--line);border-radius:18px;background:repeating-linear-gradient(0deg,#121620 0 22px,#141925 22px 44px);position:relative;touch-action:none;overflow:hidden}
+#pad.h{background:repeating-linear-gradient(90deg,#121620 0 22px,#141925 22px 44px)}
+#thumb{position:absolute;left:12%;right:12%;height:44px;top:calc(50% - 22px);border-radius:12px;background:var(--accent);opacity:.85;transition:opacity .2s}
+#pad.h #thumb{top:12%;bottom:12%;height:auto;width:60px;left:calc(50% - 30px);right:auto}
+#pad.idle #thumb{opacity:.25}
+#hint{position:absolute;inset:auto 0 10px;text-align:center;color:var(--dim);font-size:13px;pointer-events:none}
+.row{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px}
+#serve{background:var(--warm);color:#1a1200;border:0}
+#end{margin-top:10px;background:transparent;color:var(--dim)}
+.off{opacity:.4;pointer-events:none}
+</style>
+</head>
+<body>
+<header><h1><a href="/" style="color:inherit;text-decoration:none">&#8249; FreeBirdWall Games</a></h1><span id="who">connecting...</span></header>
+<div id="score"></div>
+<div id="note">Pick a game. It plays on the wall.</div>
+<div class="games"><button id="gp">Pong</button><button id="gb">Breakout</button></div>
+<div id="pad" class="idle"><div id="thumb"></div><div id="hint">Drag here to move your paddle</div></div>
+<div class="row"><button id="lo">&#9650;</button><button id="serve">Serve</button><button id="hi">&#9660;</button></div>
+<button id="end">End game</button>
+<script>
+(function(){
+var W=128,H=64,ws=null,game='none',you=-1,last='',queued=null,timer=0,sentAt=0,lastScore='',orient='';
+var $=function(id){return document.getElementById(id)};
+var pad=$('pad'),thumb=$('thumb');
+function send(m){if(ws&&ws.readyState===1)ws.send(m)}
+function flush(){timer=0;if(queued!==null&&queued!==last){send(queued);last=queued;sentAt=Date.now()}queued=null}
+/* first position at once, then at most one every 30 ms (the last one always goes) */
+function target(m){queued=m;if(timer)return;var wait=30-(Date.now()-sentAt);if(wait<=0)flush();else timer=setTimeout(flush,wait)}
+function vertical(){return game!=='breakout'}
+function layout(){var o=vertical()?'v':'h';if(o!==orient){orient=o;thumb.style.top='';thumb.style.left=''}
+ pad.className=(vertical()?'':'h')+(game==='none'?' idle':'');
+ $('lo').innerHTML=vertical()?'&#9650;':'&#9664;';$('hi').innerHTML=vertical()?'&#9660;':'&#9654;';
+ $('gp').className=game==='pong'?'on':'';$('gb').className=game==='breakout'?'on':''}
+/* the marker stays inside the pad: its far edge reaches the pad's edge at 0 and 1 */
+function place(fx,fy){if(vertical())thumb.style.top='calc('+(fy*100)+'% - '+(fy*44)+'px)';
+ else thumb.style.left='calc('+(fx*100)+'% - '+(fx*60)+'px)'}
+function touch(e){e.preventDefault();var r=pad.getBoundingClientRect(),p=e.touches?e.touches[0]:e;
+ var fx=Math.min(1,Math.max(0,(p.clientX-r.left)/r.width)),fy=Math.min(1,Math.max(0,(p.clientY-r.top)/r.height));
+ place(fx,fy);target('T '+Math.round(vertical()?fy*(H-1):fx*(W-1)))}
+function lift(e){if(e)e.preventDefault()}   /* the paddle carries on to where the finger was */
+pad.addEventListener('touchstart',touch,{passive:false});pad.addEventListener('touchmove',touch,{passive:false});
+pad.addEventListener('touchend',lift,{passive:false});pad.addEventListener('touchcancel',lift,{passive:false});
+var down=false;pad.addEventListener('mousedown',function(e){down=true;touch(e)});
+window.addEventListener('mousemove',function(e){if(down)touch(e)});window.addEventListener('mouseup',function(e){if(down){down=false;lift(e)}});
+function hold(id,d){var b=$(id),on=function(e){e.preventDefault();if(timer){clearTimeout(timer);timer=0}queued=null;send('T -1');last='T -1';send('D '+d)},
+  off=function(e){e.preventDefault();send('D 0')};
+ b.addEventListener('touchstart',on,{passive:false});b.addEventListener('touchend',off,{passive:false});
+ b.addEventListener('mousedown',on);b.addEventListener('mouseup',off)}
+hold('lo',-1);hold('hi',1);
+$('serve').addEventListener('click',function(){send('A')});
+$('gp').addEventListener('click',function(){send('G p')});
+$('gb').addEventListener('click',function(){send('G b')});
+$('end').addEventListener('click',function(){send('X')});
+function show(s){game=s.game;you=s.you;layout();
+ var side=game==='pong'?(you===0?'left paddle':'right paddle'):'player '+(you+1);
+ $('who').textContent=you<0?'watching (2 players max)':'you: '+side+' · '+s.players+' on';
+ var sc='',note='';
+ if(game==='pong'){sc=s.score[0]+' : '+s.score[1];
+  note=s.phase==='over'?'Game over — Serve to play again':s.phase==='ready'?'Serve when ready':(s.players<2?'Playing the computer':'')}
+ else if(game==='breakout'){sc=s.score+'  ♥'+s.lives+'  L'+s.level;
+  note=s.phase==='over'?'Game over — Serve to play again':s.phase==='ready'?'Serve to launch':''}
+ else note='Pick a game. It plays on the wall.';
+ if(sc!==lastScore&&lastScore&&navigator.vibrate)navigator.vibrate(25);lastScore=sc;
+ $('score').textContent=sc;$('note').textContent=note;
+ ['lo','hi','serve','end'].forEach(function(id){$(id).classList.toggle('off',game==='none'||you<0)})}
+/* opened from the dashboard's Play buttons: start that game once */
+var autostart=(/[?&]g=([pb])/.exec(location.search)||[])[1];
+function connect(){$('who').textContent='connecting...';
+ ws=new WebSocket('ws://'+location.host+'/ws');
+ ws.onopen=function(){if(autostart){send('G '+autostart);autostart=null;history.replaceState(null,'','/play')}};
+ ws.onmessage=function(e){try{show(JSON.parse(e.data))}catch(x){}};
+ ws.onclose=function(){$('who').textContent='reconnecting...';last='';setTimeout(connect,1500)};
+ ws.onerror=function(){try{ws.close()}catch(x){}}}
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&(!ws||ws.readyState>1))connect()});
+layout();connect();
+})();
+</script>
+</body>
+</html>
