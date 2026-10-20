@@ -6,10 +6,11 @@
 keeps everything the wall already does, needs no subscription, and adds:
 
 - **A dashboard on your phone.** Change every setting from any phone or computer on your Wi-Fi.
+- **Games on the wall.** Play [Pong and Breakout](#play-games-on-the-wall) on the LEDs, with your phone as the controller. Two phones can play Pong against each other.
 - **Free flight data.** Choose the community services ([adsb.fi](https://adsb.fi) and [adsbdb](https://www.adsbdb.com)) instead of the FlightWall service if you like.
 - **Your trips on the wall (Sync).** Add your flights or import a calendar file, and the wall shows the trip and follows the plane while it is in the air.
 - **Tracked flights**, with real times when you add a FlightAware key.
-- **Stats** of the planes your wall has seen, **games** (Pong and Breakout, played from a phone), **extra clocks**, and **your own airport names**.
+- **Stats** of the planes your wall has seen, **extra clocks**, and **your own airport names**.
 - **Names that fit.** Long airline and airport names are shortened, and scroll if they are still too long.
 
 You can go back to the original firmware at any time. Nothing is deleted.
@@ -90,12 +91,33 @@ sign in up to four browsers this way.
 | <img src="docs/images/dashboard-display.jpg" alt="Display settings" width="260"> | **Display:** what each flight shows, brightness and sleep hours, and how fast long names scroll. **Clock:** time zones, 12 or 24 hours, and up to two extra cities. **Airports:** rename airports the way you say them ("Kennedy" instead of "John F Kennedy Intl"). |
 | <img src="docs/images/dashboard-flights.jpg" alt="Flight settings" width="260"> | **Flights:** where flight data comes from (the FlightWall service or the free community services), the areas the wall watches, which aircraft to show, and **tracked flights**: flights followed wherever they are. |
 | <img src="docs/images/dashboard-sync.jpg" alt="Sync" width="260"> | **Sync:** your own trips. Add a flight, or import a calendar (`.ics`) file from a crew or calendar app. The wall counts down to departure, follows the plane in the air, shows what is next, and can show a message for home. |
-| <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flights seen today, the top airlines, the last 48 hours and the last 31 days. **Games:** play Pong or Breakout on the wall from your phone. **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
+| <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flights seen today, the top airlines, the last 48 hours and the last 31 days. **Games:** see [below](#play-games-on-the-wall). **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
 
 Changes collect in a bar at the bottom; press **Save** and they reach the wall within a second.
 
 **The FlightWall app still works.** Settings you change in the app reach the wall too, one setting at a time, so anything you
 changed only in the dashboard stays. You can turn this off under **Device**.
+
+---
+
+## Play games on the wall
+
+<a href="https://mrsco.github.io/freebirdwall/videos/freebirdwall-demo.mp4"><img src="docs/images/games-breakout.gif" alt="Breakout on the wall, played by dragging a finger on a phone" width="480"></a>
+
+*[Watch the full demo (38 s)](https://mrsco.github.io/freebirdwall/videos/freebirdwall-demo.mp4): a flight, then Breakout and Pong.*
+
+The wall is also a little arcade. Your phone is the controller: drag up and down for Pong, left and right for Breakout.
+
+- **Pong.** Two phones play each other, or one phone plays the computer (it can be beaten). First to 11 wins.
+- **Breakout.** Arcade rules: three lives, a ball that speeds up, a paddle that shrinks once you reach the top, and a new,
+  faster wall each time you clear one.
+
+**To play,** press **Play Pong** or **Play Breakout** in the dashboard. For guests, press **Show the QR on the wall**, or
+turn on **"Scan to play" between screens**: anyone on your Wi-Fi can scan the code and join, no sign-in needed. The game
+page reaches only the game, never your settings. Add it to your home screen to play again with a single tap.
+
+Phones that can vibrate buzz when the score changes. When nobody has played for a minute, the wall goes back to showing
+flights.
 
 ---
 
