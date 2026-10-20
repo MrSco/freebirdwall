@@ -31,11 +31,13 @@ extern const char icon_start[] asm("_binary_icon_png_start");
 extern const char icon_end[] asm("_binary_icon_png_end");
 
 /* "Add to Home Screen": opens the dashboard full screen with our icon
- * (tools/make_icon.py). Served from flash; costs no RAM. */
+ * (tools/make_icon.py). Served from flash; costs no RAM. iOS keeps home-screen
+ * icons by address, so bump ?v= here and in both pages whenever icon.png
+ * changes (v=2: the Freebird bird replaced the plane). */
 static const char manifest[] =
     "{\"name\":\"FreeBirdWall\",\"short_name\":\"FreeBirdWall\",\"start_url\":\"/\",\"display\":\"standalone\","
     "\"background_color\":\"#0b0d12\",\"theme_color\":\"#0b0d12\","
-    "\"icons\":[{\"src\":\"/icon.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]}";
+    "\"icons\":[{\"src\":\"/icon.png?v=2\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]}";
 
 static httpd_handle_t s_server;
 static SemaphoreHandle_t s_lock;
