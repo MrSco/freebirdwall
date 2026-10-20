@@ -1,6 +1,8 @@
 """Run tests/test_assets.c against the real asset partition from a private backup.
 
-    py tests/test_assets.py <full-flash-backup.bin>
+    py tests/test_assets.py [full-flash-backup.bin]
+
+The backup defaults to backups/stock-original-2026-09-08-backup.bin at the repo root.
 
 Needs build/logo-fixtures from tools/extract_logos.py (littlefs-python), so the
 firmware's C littlefs build is checked against an independent implementation.
@@ -12,16 +14,20 @@ HERE = Path(__file__).resolve().parent
 FW = HERE.parent
 LFS = FW.parent / 'build' / 'deps' / 'littlefs'
 PNGDEC = FW.parent / 'build' / 'deps' / 'pngdec' / 'src'
+BACKUP = FW.parents[1] / 'backups' / 'stock-original-2026-09-08-backup.bin'
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) > 2:
         sys.exit(__doc__)
+    backup = Path(sys.argv[1]) if len(sys.argv) == 2 else BACKUP
+    if not backup.exists():
+        sys.exit('no backup at %s' % backup)
     fixtures = FW / 'build' / 'logo-fixtures'
     names = sorted(p.name for p in fixtures.glob('*.png'))
     if not names:
         sys.exit('no fixtures; run tools/extract_logos.py first')
-    raw = Path(sys.argv[1]).read_bytes()
+    raw = backup.read_bytes()
     gcc = shutil.which('gcc') or sys.exit('a desktop gcc is required')
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)

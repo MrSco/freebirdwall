@@ -20,7 +20,7 @@ import { backup, check, install, readStartLine, readSlotImage, restoreBackup, sw
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
 const arg = (name, dflt) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : dflt; };
-const BACKUP = arg('--backup', join(REPO, 'flightwall-backup.bin'));
+const BACKUP = arg('--backup', join(REPO, 'backups', 'stock-original-2026-09-08-backup.bin'));
 const IMAGE = arg('--image', join(REPO, 'runtime', 'firmware', 'build-keep', 'freebirdwall.bin'));
 
 let checks = 0, failed = 0;
