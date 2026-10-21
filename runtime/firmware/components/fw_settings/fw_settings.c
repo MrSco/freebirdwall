@@ -222,7 +222,7 @@ ENUM(v_source, "vendor", "community")
 ENUM(v_tracking, "community", "aeroapi")
 ENUM(v_scroll, "slow", "normal", "fast")
 static const Rule OWNED[] = {{"flight_source", v_source}, {"follow_app", v_bool}, {"tracking_source", v_tracking},
-                             {"scroll_speed", v_scroll},
+                             {"scroll_speed", v_scroll}, {"heartbeat_enabled", v_bool},
                              {NULL, NULL}};
 
 static const Rule REQUEST[] = {{"radius_requests", v_zones}, {"data_filters", v_filters},

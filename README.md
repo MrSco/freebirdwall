@@ -88,8 +88,8 @@ sign in up to four browsers this way.
 
 | | |
 |---|---|
-| <img src="docs/images/dashboard-display.jpg" alt="Display settings" width="260"> | **Display:** what each flight shows, brightness and sleep hours, and how fast long names scroll. **Clock:** time zones, 12 or 24 hours, and up to two extra cities. **Airports:** rename airports the way you say them ("Kennedy" instead of "John F Kennedy Intl"). |
-| <img src="docs/images/dashboard-flights.jpg" alt="Flight settings" width="260"> | **Flights:** where flight data comes from (the FlightWall service or the free community services), the areas the wall watches, which aircraft to show, and **tracked flights**: flights followed wherever they are. |
+| <img src="docs/images/dashboard-display.jpg" alt="Display settings" width="260"> | **Display:** preview what each flight looks like, set brightness and sleep hours, control long-name scrolling, and hide the orange heartbeat light. **Clock:** time zones, 12 or 24 hours, and up to two extra cities. **Airports:** rename airports the way you say them ("Kennedy" instead of "John F Kennedy Intl"). |
+| <img src="docs/images/dashboard-flights.jpg" alt="Flight settings" width="260"> | **Flights:** where flight data comes from (the FlightWall service or the free community services), the areas the wall watches (pick on an OpenStreetMap map; expand an area to edit it), which aircraft to show, and **tracked flights**: flights followed wherever they are. |
 | <img src="docs/images/dashboard-sync.jpg" alt="Sync" width="260"> | **Sync:** your own trips. Add a flight, or import a calendar (`.ics`) file from a crew or calendar app. The wall counts down to departure, follows the plane in the air, shows what is next, and can show a message for home. |
 | <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flights seen today, the top airlines, the last 48 hours and the last 31 days. **Games:** see [below](#play-games-on-the-wall). **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
 
