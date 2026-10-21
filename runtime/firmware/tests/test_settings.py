@@ -194,6 +194,11 @@ def test_owned(exe, tmp):
     d = ok(exe, tmp, {'owned_config': {'scroll_speed': 'slow'}}, 'owned: scroll speed', current=cur)
     check(d['owned_config'].get('scroll_speed') == 'slow', 'owned: scroll_speed saved %r' % d)
     bad(exe, tmp, {'owned_config': {'scroll_speed': 3}}, 'owned_config.scroll_speed', 'owned: scroll speed is a word')
+    for enabled in (False, True, None):
+        d = ok(exe, tmp, {'owned_config': {'heartbeat_enabled': enabled}}, 'owned: heartbeat', current=cur)
+        check(d['owned_config'].get('heartbeat_enabled') == enabled, 'owned: heartbeat saved/reset %r' % d)
+        check(d['owned_config']['flight_source'] == 'community', 'owned: heartbeat preserves other settings')
+    bad(exe, tmp, {'owned_config': {'heartbeat_enabled': 'false'}}, 'owned_config.heartbeat_enabled', 'owned: heartbeat must be bool')
     bad(exe, tmp, {'owned_config': {'colour': 1}}, 'owned_config.colour', 'owned: unknown key')
     bad(exe, tmp, {'owned_config': []}, 'owned_config', 'owned: not an object')
 

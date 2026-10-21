@@ -52,9 +52,11 @@ nav button[aria-selected=true]{background:var(--accent);border-color:var(--accen
 .seg{display:flex;flex-wrap:wrap;gap:6px}
 .seg button{flex:1 1 auto;min-width:76px;min-height:42px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:8px 10px;cursor:pointer}
 .seg button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent);font-weight:600}
-select,input[type=text],input[type=number],input[type=time]{width:100%;min-height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+select,input[type=text],input[type=number],input[type=time]{width:100%;min-width:0;max-width:100%;min-height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+input[type=time]{-webkit-appearance:none;appearance:none}
+input[type=time]::-webkit-date-and-time-value{min-width:0;text-align:center}
 input:focus,select:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.two-col{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
 @media (max-width:360px){.two-col{grid-template-columns:1fr}}
 .sw{position:relative;width:52px;height:30px;flex:none;display:block}
 .sw input{opacity:0;width:0;height:0;position:absolute}
@@ -100,6 +102,23 @@ input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:32px;marg
 #toast.show{transform:translate(-50%,0)}
 .hidden{display:none!important}
 .console{margin:8px 0 0;max-height:320px;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+input[type=time]::-webkit-datetime-edit{min-width:0;padding:0}
+.area-toggle{display:block;flex:1;min-width:0;border:0;background:none;text-align:left;padding:7px 0;cursor:pointer;font-weight:600}
+.area-toggle strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.area-toggle small{display:block;font-size:12px;color:var(--dim);font-weight:400}
+.area-toggle:before{content:'›';float:right;margin:0 4px 0 8px;color:var(--accent)}
+.area-toggle[aria-expanded=true]:before{content:'⌄'}
+.area-pin span{display:block;width:22px;height:22px;margin:11px;background:#0b8fa3;border:3px solid white;border-radius:50%;box-shadow:0 1px 6px #0008}
+.area-map{height:260px;border:1px solid var(--line);border-radius:10px;margin-top:8px;z-index:0;background:#dde5df;color:#141821}
+#map-search input{text-transform:none}
+.map-results{display:grid;gap:6px;margin-top:6px}
+.map-results .btn{display:block;text-align:left;font-size:13px;font-weight:400}
+.coordinates{margin-top:12px}.coordinates summary{cursor:pointer;color:var(--accent);font-size:13px;margin-bottom:8px}
+.preview-card{grid-column:1/-1}.preview-frame{background:#030405;border:8px solid #252a32;border-radius:12px;padding:6px;max-width:548px;margin:12px auto;box-shadow:0 8px 24px #0005}
+#wall-preview{display:block;width:100%;height:auto;image-rendering:pixelated;aspect-ratio:2;background:#000}
+.preview-card .seg{max-width:548px;margin:12px auto 0}
+.preview-card .note{text-align:center}
+@media(prefers-reduced-motion:reduce){.sw span,#bar,#toast{transition:none}}
 </style>
 </head>
 <body>
@@ -213,8 +232,85 @@ var ALT=[['feet','Feet'],['meters','Metres'],['kilometers','Kilometres'],['nauti
  VEL=[['mph','mph'],['knots','Knots'],['kmh','km/h'],['mps','m/s'],['mach','Mach']],
  VR=[['fpm','ft/min'],['fps','ft/s'],['mph','mph'],['kmh','km/h'],['mps','m/s']],
  DIST=[['miles','Miles'],['nautical_miles','Nautical miles'],['kilometers','Kilometres'],['meters','Metres'],['feet','Feet']];
+/* Preview glyph data copied from components/fw_text/font5x7.c.
+ * Classic 5x7 font from Adafruit-GFX-Library glcdfont.c, commit bc85af5aa4802cb85626c188cbc632343e3dae14.
+ * Five column bytes per glyph, bit 0 = top row; 256 glyphs in CP437 order.
+ *
+ * Original licence:
+ *
+ * Software License Agreement (BSD License)
+ *
+ * Copyright (c) 2012 Adafruit Industries.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+var PREVIEW_FONT=[0,0,0,0,0,0,0,95,0,0,0,7,0,7,0,20,127,20,127,20,36,42,127,42,18,35,19,8,100,98,54,73,86,32,80,0,8,7,3,0,0,28,34,65,0,0,65,34,28,0,42,28,127,28,42,8,8,62,8,8,0,128,112,48,0,8,8,8,8,8,0,0,96,96,0,32,16,8,4,2,62,81,73,69,62,0,66,127,64,0,114,73,73,73,70,33,65,73,77,51,24,20,18,127,16,39,69,69,69,57,60,74,73,73,49,65,33,17,9,7,54,73,73,73,54,70,73,73,41,30,0,0,20,0,0,0,64,52,0,0,0,8,20,34,65,20,20,20,20,20,0,65,34,20,8,2,1,89,9,6,62,65,93,89,78,124,18,17,18,124,127,73,73,73,54,62,65,65,65,34,127,65,65,65,62,127,73,73,73,65,127,9,9,9,1,62,65,65,81,115,127,8,8,8,127,0,65,127,65,0,32,64,65,63,1,127,8,20,34,65,127,64,64,64,64,127,2,28,2,127,127,4,8,16,127,62,65,65,65,62,127,9,9,9,6,62,65,81,33,94,127,9,25,41,70,38,73,73,73,50,3,1,127,1,3,63,64,64,64,63,31,32,64,32,31,63,64,56,64,63,99,20,8,20,99,3,4,120,4,3,97,89,73,77,67,0,127,65,65,65,2,4,8,16,32,0,65,65,65,127,4,2,1,2,4,64,64,64,64,64,0,3,7,8,0,32,84,84,120,64,127,40,68,68,56,56,68,68,68,40,56,68,68,40,127,56,84,84,84,24,0,8,126,9,2,24,164,164,156,120,127,8,4,4,120,0,68,125,64,0,32,64,64,61,0,127,16,40,68,0,0,65,127,64,0,124,4,120,4,120,124,8,4,4,120,56,68,68,68,56,252,24,36,36,24,24,36,36,24,252,124,8,4,4,8,72,84,84,84,36,4,4,63,68,36,60,64,64,32,124,28,32,64,32,28,60,64,48,64,60,68,40,16,40,68,76,144,144,144,124,68,100,84,76,68,0,8,54,65,0,0,0,119,0,0,0,65,54,8,0,2,1,2,4,2];
+/* Sample panel preview: 128x64, the firmware's 5x7 glyphs and mini geometry.
+ * This browser illustration uses sample flights; physical LED brightness varies. */
+var previewMode='flight',previewTimer=0,previewStart=Date.now();
+function previewCard(){return '<section class="card preview-card"><h2>Wall preview</h2><p class="sub">See your changes before saving.</p><div class="preview-frame"><canvas id="wall-preview" width="128" height="64" role="img" aria-label="Sample wall display using your current settings"></canvas></div>'+
+ '<div class="seg" role="group" aria-label="Preview screen">'+[['flight','Flight'],['empty','No flights'],['overflow','More flights'],['sleep','Asleep']].map(function(x){return '<button type="button" data-preview="'+x[0]+'" aria-pressed="'+(previewMode===x[0])+'">'+x[1]+'</button>'}).join('')+'</div><p class="note" id="preview-note"></p><p class="note">Sample data · approximate LED brightness and logos · changes apply to the wall when saved.</p></section>'}
+function previewWire(){if(!$('#wall-preview'))return;$$('[data-preview]').forEach(function(b){b.onclick=function(){previewMode=b.dataset.preview;previewStart=Date.now();$$('[data-preview]').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});drawPreview()}});drawPreview();previewTimer=setInterval(drawPreview,80)}
+function drawPreview(){var canvas=$('#wall-preview');if(!canvas||!st.work)return;var ctx=canvas.getContext('2d'),d=st.work.display_config||{},o=st.work.owned_config||{},u=d.metric_display||{},elapsed=Date.now()-previewStart,
+ reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches,phase=reduced?0:elapsed,brightness=d.brightness_percent==null?15:d.brightness_percent,note='Flight preview · current settings';
+ ctx.globalAlpha=1;ctx.fillStyle='#000';ctx.fillRect(0,0,128,64);
+ if(previewMode==='sleep'&&d.sleep_time){brightness=d.sleep_time.sleep_brightness_percent||0;note='Asleep from '+d.sleep_time.start+' until '+d.sleep_time.end+' · '+brightness+'% brightness'}
+ else if(previewMode==='sleep')note='Sleep schedule is off · showing normal brightness';
+ if(d.display_enabled===false){brightness=0;note='Display is off'}
+ ctx.globalAlpha=brightness?Math.pow(brightness/100,.3):0;
+ function text(t,x,y,w,color){t=String(t);ctx.save();ctx.beginPath();ctx.rect(x,y,w,8);ctx.clip();ctx.fillStyle=color||'#fff';
+  var overflow=Math.max(0,t.length*6-w),speed=o.scroll_speed==='slow'?80:o.scroll_speed==='fast'?20:40,offset=overflow?Math.min(overflow,Math.max(0,(phase%(2400+overflow*speed)-1200)/speed)):0;
+  for(var k=0;k<t.length;k++){var cp=t.charCodeAt(k);if(cp<32||cp>126)cp=63;for(var col=0;col<5;col++){var bits=PREVIEW_FONT[(cp-32)*5+col];for(var row=0;row<7;row++)if(bits&(1<<row))ctx.fillRect(Math.round(x+k*6+col-offset),y+row,1,1)}}ctx.restore()}
+ function center(t,y){text(t,Math.max(2,Math.floor((128-t.length*6)/2)),y,124)}
+ function compact(n,unit){n=Math.round(n);return (Math.abs(n)<1000?n:Math.abs(n)<10000?(n/1000).toFixed(1)+'k':Math.trunc(n/1000)+'k')+unit}
+ function metric(kind,unit){var units=kind==='alt'?{feet:[10668*3.28084,'ft'],meters:[10668,'m'],kilometers:[10.668,'km'],nautical_miles:[10668/1852,'nm']}:
+  kind==='speed'?{mph:[230*2.23694,'mph'],knots:[230*1.94384,'kt'],kmh:[828,'kmh'],mps:[230,'mps'],mach:[230/343,'M']}:
+  {fpm:[2*196.8504,'fpm'],fps:[2*3.28084,'fps'],mph:[2*2.23694,'mph'],kmh:[7.2,'kmh'],mps:[2,'mps']};var v=units[unit]||units[kind==='alt'?'meters':'kmh'];return kind==='speed'&&unit==='mach'?v[0].toFixed(2)+'M':compact(v[0],v[1])}
+ if(previewMode==='empty'){
+  note='No nearby flights · '+(d.loading_template||'TEXT').toLowerCase();
+  if(d.loading_template==='CLOCK'){var now=new Date();center(now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:!d.clock_is_24hr}),26)}
+  else if(d.loading_template==='ELLIPSIS')center(['.','..','...'][Math.floor(phase/500)%3],28);
+  else if(d.loading_template!=='BLANK'){center('No flights...',22);center('Waiting for flights',36)}
+ }else if(previewMode==='overflow'&&(!d.max_flights_behavior||d.max_flights_behavior==='text')){center('8 flights nearby',22);center('Showing 4',36);note='More than five flights · count screen'}
+ else{
+  var second=Math.floor(phase/(d.flight_display_speed==='slow'?5000:d.flight_display_speed==='fast'?2000:3000))%2,
+   title=d.title_text==='callsign'?(second?'AAL1234':'JBU123'):d.title_text==='registration'?(second?'N915NN':'N805JB'):(second?'American':'JetBlue'),
+   orig=second?'Charlotte Douglas':'Fort Lauderdale',dest=second?'Palm Beach Intl':'Raleigh-Durham',route=second?'CLT-PBI':'FLL-RDU',aircraft=second?'737-800':'A320',logo=d.layout_template!=='NO_LOGO',x=logo?40:2,w=logo?86:124;
+  if(logo){ctx.fillStyle=second?'#254967':'#102e60';ctx.fillRect(2,2,36,36);text(second?'AA':'jet',6,17,30)}
+  text(title,x,4,w);text(route+(logo?'':', '+aircraft),x,16,w);text(logo?aircraft:orig,x,28,w);
+  var metrics='Alt:'+metric('alt',u.alt_b_unit)+',Spd:'+metric('speed',u.vel_unit);
+  text(d.layout_template==='TECHNICAL'?metrics:logo?orig:dest,2,41,124);
+  text(d.layout_template==='TECHNICAL'?'Trk:'+(u.trk_unit==='cardinal'?'NE':'45')+',Vr:'+metric('vr',u.vr_unit):logo?dest:metrics,2,53,124);
+  if(d.border_enable){ctx.save();ctx.globalAlpha*=((d.border_brightness_percent==null?100:d.border_brightness_percent)/100);ctx.strokeStyle='#2ec5d8';ctx.lineWidth=1;ctx.strokeRect(.5,.5,127,63);ctx.restore()}
+  if(previewMode==='overflow'){note='More than five flights · '+(d.max_flights_behavior==='indicator_led'?'corner light':'no extra screen');if(d.max_flights_behavior==='indicator_led'){ctx.fillStyle='#00ff00';ctx.fillRect(127,0,1,1)}}
+ }
+ if(o.heartbeat_enabled!==false&&(reduced||Math.floor(phase/480)%2)){ctx.fillStyle='#ff4000';ctx.fillRect(127,63,1,1)}
+ ctx.globalAlpha=1;if(!brightness)note='Display is dark'+(previewMode==='sleep'&&d.sleep_time?' during sleep hours':'');
+ $('#preview-note').textContent=note
+}
+
 function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_time');
- return '<div class="grid two">'+
+ return '<div class="grid two">'+previewCard()+
  card('Flight card','What each flight shows.',
   seg(P+'title_text',[['airline','Airline'],['callsign','Callsign'],['registration','Registration']],'airline','Title')+
   seg(P+'layout_template',[['DEFAULT','Logo'],['NO_LOGO','No logo'],['TECHNICAL','Technical']],'DEFAULT','Layout','Technical shows altitude, speed and heading')+
@@ -225,6 +321,7 @@ function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_ti
  card('Brightness','',
   range(P+'brightness_percent',1,100,15,'Brightness','%')+
   seg('owned_config.scroll_speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],'normal','Long names scroll')+
+  sw('owned_config.heartbeat_enabled',true,'Heartbeat light','Blink the orange pixel in the bottom-right corner')+
   sw(P+'border_enable',false,'Border','A coloured frame around each flight')+
   (get(st.work,P+'border_enable')?range(P+'border_brightness_percent',0,100,100,'Border brightness','%'):''))+
  card('Power','',
@@ -275,6 +372,58 @@ function viewClock(){var P='display_config.',extras=get(st.work,P+'clock.additio
 
 /* ------------------------------------------------------------ Flights */
 var KTS=0.514444;
+/* OpenStreetMap is loaded only for the area being edited. No wall credentials
+ * are sent to the map, tile or search providers. */
+var openZone=null,areaMap=null,areaCircle=null,areaMarker=null,mapEpoch=0,mapView=null,leafletPromise=null,lastPlaceSearch=0;
+function releaseMap(){mapEpoch++;if(areaMap){mapView={center:areaMap.getCenter(),zoom:areaMap.getZoom(),zone:openZone};areaMap.remove();areaMap=areaCircle=areaMarker=null}}
+function leaflet(){if(window.L)return Promise.resolve(window.L);if(leafletPromise)return leafletPromise;
+ leafletPromise=new Promise(function(resolve,reject){
+  var css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';css.crossOrigin='anonymous';css.integrity='sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';document.head.appendChild(css);
+  var script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.crossOrigin='anonymous';script.integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+  script.onload=function(){resolve(window.L)};script.onerror=function(){script.remove();css.remove();leafletPromise=null;reject(new Error('Map could not load'))};document.head.appendChild(script)
+ });return leafletPromise}
+function areaSummary(z){return (z.latitude==null?'Choose a centre on the map':Number(z.latitude).toFixed(4)+', '+Number(z.longitude).toFixed(4))+' · '+(z.radius_km||50)+' km radius'}
+function areaEditor(z,i,p){return '<div class="area-editor" id="area-editor-'+i+'">'+text(p+'.name','Name','','maxlength="31" placeholder="Home or airport"')+
+ '<div class="field" data-field="'+p+'.latitude"><div class="label">Centre<small>Tap the map or drag the pin to choose an airport or any area.</small></div>'+
+ '<form class="add" id="map-search"><input type="text" id="map-query" aria-label="Find an airport or place" placeholder="Find an airport or place" maxlength="120" autocomplete="off"><button class="btn" type="submit">Find</button></form>'+
+ '<div id="map-results" class="map-results"></div><p class="note" id="map-message" role="status">Loading OpenStreetMap…</p>'+
+ '<div id="area-map" class="area-map" role="region" aria-label="Map to choose the area centre"></div>'+
+ '<p class="note" id="map-coordinates">'+esc(areaSummary(z))+'</p>'+
+ '<details class="coordinates"><summary>Enter coordinates manually</summary><label class="note" for="loc'+i+'">Latitude, longitude</label><input type="text" id="loc'+i+'" autocomplete="off" data-loc="'+i+'" value="'+(z.latitude!=null?z.latitude+', '+z.longitude:'')+'" placeholder="51.4700, -0.4543"></details>'+
+ '<p class="note">Maps and place search need internet access. © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>.</p></div>'+
+ range(p+'.radius_km',1,250,50,'Radius',' km')+'<div class="two-col">'+altIn(p+'.min_altitude','Lowest altitude')+altIn(p+'.max_altitude','Highest altitude')+'</div></div>'}
+function updateAreaCentre(i,lat,lng,initial){var z=listAt('request_config.radius_requests')[i];
+ if(!initial){z.latitude=Math.round(Math.max(-90,Math.min(90,lat))*1e5)/1e5;z.longitude=Math.round((((lng+180)%360+360)%360-180)*1e5)/1e5}
+ var loc=$('[data-loc="'+i+'"]');if(loc){loc.value=z.latitude+', '+z.longitude;clearBad(loc)}
+ var coords=$('#map-coordinates');if(coords)coords.textContent=areaSummary(z);
+ var summary=$('[data-zone-summary="'+i+'"]');if(summary)summary.textContent=areaSummary(z);
+ if(areaMap){var ll=[z.latitude,z.longitude];if(areaMarker)areaMarker.setLatLng(ll);else areaMarker=L.marker(ll,{draggable:true,title:'Area centre (drag to move)',icon:L.divIcon({className:'area-pin',html:'<span></span>',iconSize:[44,44],iconAnchor:[22,22]})}).addTo(areaMap).on('dragend',function(){var pt=areaMarker.getLatLng();updateAreaCentre(i,pt.lat,pt.lng)});
+  if(areaCircle)areaCircle.setLatLng(ll);else areaCircle=L.circle(ll,{radius:(z.radius_km||50)*1000,color:'#0b8fa3',weight:2,fillOpacity:.12}).addTo(areaMap)}
+ if(!initial)changed()}
+function mapWire(root){var el=$('#area-map',root);if(!el)return;var epoch=mapEpoch,i=openZone,z=listAt('request_config.radius_requests')[i],message=$('#map-message');
+ leaflet().then(function(L){if(epoch!==mapEpoch||!el.isConnected)return;
+  var center=z.latitude!=null?[z.latitude,z.longitude]:[20,0];
+  areaMap=L.map(el,{scrollWheelZoom:false,zoomAnimation:false}).setView(center,z.latitude!=null?9:2);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(areaMap).on('tileerror',function(){if(el.isConnected)message.textContent='Some map tiles could not load. Check your internet connection.'});
+  if(z.latitude!=null){updateAreaCentre(i,z.latitude,z.longitude,true);areaMap.fitBounds(areaCircle.getBounds(),{padding:[12,12],maxZoom:13})}
+  if(mapView&&mapView.zone===i)areaMap.setView(mapView.center,mapView.zoom);
+  areaMap.on('click',function(e){updateAreaCentre(i,e.latlng.lat,e.latlng.lng);message.textContent='Centre selected. Drag the pin to adjust.'});
+  message.textContent='Tap the map to place the centre. Use + and − to zoom.';
+ }).catch(function(){if(epoch!==mapEpoch||!el.isConnected)return;
+  message.innerHTML='Map unavailable. Check your internet connection, or enter coordinates below. <button type="button" class="btn small" id="map-retry">Retry map</button>';
+  $('#map-retry').onclick=function(){render()}
+ });
+ $('#map-search',root).onsubmit=function(e){e.preventDefault();var query=$('#map-query').value.trim();if(!query)return;
+  if(Date.now()-lastPlaceSearch<1000)return;lastPlaceSearch=Date.now();
+  var results=$('#map-results'),button=this.querySelector('button');button.disabled=true;results.innerHTML='';message.textContent='Finding places…';
+  fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(query),{credentials:'omit'}).then(function(r){if(!r.ok)throw new Error();return r.json()}).then(function(places){
+   if(epoch!==mapEpoch||!el.isConnected)return;message.textContent=places.length?'Choose a result, then adjust the pin on the map.':'No places found. Try the airport name and city, or pick on the map.';
+   places.forEach(function(place){var b=document.createElement('button');b.type='button';b.className='btn';b.textContent=place.display_name;
+    b.onclick=function(){updateAreaCentre(i,Number(place.lat),Number(place.lon));if(areaMap)areaMap.setView([Number(place.lat),Number(place.lon)],12);results.innerHTML='';message.textContent='Centre selected. Tap the map or drag the pin to adjust.'};results.appendChild(b)})
+  }).catch(function(){if(epoch===mapEpoch&&el.isConnected)message.textContent='Place search unavailable. Try again later or pick directly on the map.'}).then(function(){button.disabled=false})
+ }
+}
+
 function viewFlights(){var Q='request_config.',zones=get(st.work,Q+'radius_requests')||[],tracked=get(st.work,Q+'tracked_flights')||[],
   community=get(st.work,'owned_config.flight_source')==='community';
  return '<div class="grid two">'+
@@ -285,12 +434,9 @@ function viewFlights(){var Q='request_config.',zones=get(st.work,Q+'radius_reque
    (tracked.length?' Tracked flights are found by their callsign, one lookup a minute; “Stop after it lands” lasts until the wall restarts.':''):
    'The FlightWall service, with the wall\'s own account: routes, tracked flights and aircraft types.')+'</p>')+
  card('Areas to watch','Up to five circles. Flights inside any of them are shown.',
-  zones.map(function(z,i){var p=Q+'radius_requests.'+i;
-   return '<div class="item" data-field="'+p+'"><div class="head"><span>'+(esc(z.name)||'Area '+(i+1))+'</span>'+(zones.length>1?'<button type="button" class="btn small danger" data-del-zone="'+i+'">Remove</button>':'')+'</div>'+
-   text(p+'.name','Name','','maxlength="31" placeholder="Home"')+
-   '<div class="field" data-field="'+p+'.latitude"><label for="loc'+i+'">Centre<small>Latitude, longitude · copy from a map app</small></label><input type="text" id="loc'+i+'" inputmode="text" autocomplete="off" data-loc="'+i+'" value="'+(z.latitude!=null?z.latitude+', '+z.longitude:'')+'" placeholder="51.4700, -0.4543"></div>'+
-   range(p+'.radius_km',1,250,50,'Radius',' km')+
-   '<div class="two-col">'+altIn(p+'.min_altitude','Lowest altitude')+altIn(p+'.max_altitude','Highest altitude')+'</div></div>'}).join('')+
+  zones.map(function(z,i){var p=Q+'radius_requests.'+i,open=openZone===i;
+   return '<div class="item area-item" data-field="'+p+'"><div class="head"><button type="button" class="area-toggle" data-open-zone="'+i+'" aria-expanded="'+open+'" aria-controls="area-editor-'+i+'"><strong>'+(esc(z.name)||'Area '+(i+1))+'</strong><small data-zone-summary="'+i+'">'+esc(areaSummary(z))+'</small></button>'+(zones.length>1?'<button type="button" class="btn small danger" data-del-zone="'+i+'">Remove</button>':'')+'</div>'+
+   (open?areaEditor(z,i,p):'<div id="area-editor-'+i+'" hidden></div>')+'</div>'}).join('')+
   (zones.length<5?'<div class="btns"><button type="button" class="btn" id="add-zone">Add an area</button></div>':''))+
  '<div class="grid">'+
  card('Which aircraft','',
@@ -552,9 +698,9 @@ function importView(){var list=st.syncImport;
   '<div class="btns"><button type="button" class="btn primary" id="imp-add">Add the ticked flights</button><button type="button" class="btn" id="imp-cancel">Cancel</button></div></div>'}
 function syncLoad(){if(!key)return;api('/api/sync').then(function(j){st.sync=j;st.syncWork=clone(j);changed();if(st.tab==='sync')render()}).catch(function(){})}
 var VIEWS={display:viewDisplay,clock:viewClock,flights:viewFlights,airports:viewAirports,sync:viewSync,stats:viewStats,games:viewGames,device:viewDevice};
-function render(){var m=$('#main'),y=window.scrollY;
+function render(){releaseMap();clearInterval(previewTimer);var m=$('#main'),y=window.scrollY;
  if(!(key&&st.doc)){m.innerHTML=viewGames();gamesWire();return}
- m.innerHTML=(VIEWS[st.tab]||viewDisplay)();wire(m);gamesWire();statsLoad();window.scrollTo(0,y)}
+ m.innerHTML=(VIEWS[st.tab]||viewDisplay)();wire(m);mapWire(m);previewWire();gamesWire();statsLoad();window.scrollTo(0,y)}
 function changed(){st.dirty=!same(st.work,st.base)||!same(st.aliasWork,st.aliases.aliases)||!!(st.sync&&!same(st.syncWork,st.sync));$('#bar').classList.toggle('show',st.dirty)}
 function clearBad(el){var f=el.closest('.bad');if(f)f.classList.remove('bad')}
 
@@ -579,15 +725,16 @@ function wire(root){
    else v=el.value.trim()===''&&/\.(name|label)$/.test(el.dataset.bind)?undefined:el.value.trim();
    set(st.work,el.dataset.bind,v);
    if(live)el.nextElementSibling.textContent=v+el.dataset.unit;
-   changed();if(t==='boolean')render();else if(/\.(name|label)$/.test(el.dataset.bind))heading(el,v||'')})});
+   changed();if(live&&/radius_km$/.test(el.dataset.bind)){if(areaCircle)areaCircle.setRadius(v*1000);var zi=+el.dataset.bind.split('.')[2],zs=$('[data-zone-summary="'+zi+'"]');if(zs)zs.textContent=areaSummary(listAt('request_config.radius_requests')[zi]);var mc=$('#map-coordinates');if(mc)mc.textContent=areaSummary(listAt('request_config.radius_requests')[zi])}if(t==='boolean')render();else {if(/\.(name|label)$/.test(el.dataset.bind)){heading(el,v||'');var zh=el.closest('.area-item');if(zh)$('strong',zh).textContent=v||'Area'}drawPreview()}})});
  var so=$('#sleepOn',root);if(so)so.onchange=function(){set(st.work,'display_config.sleep_time',so.checked?{start:'23:00',end:'07:00',sleep_brightness_percent:0}:undefined);changed();render()};
  $$('[data-speed]',root).forEach(function(el){el.onchange=function(){clearBad(el);set(st.work,el.dataset.speed,el.value===''?undefined:Math.min(400,Math.max(0,Math.round(Number(el.value)*KTS))));changed()}});
  $$('[data-loc]',root).forEach(function(el){el.onchange=function(){var m=el.value.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/),p='request_config.radius_requests.'+el.dataset.loc,f=el.closest('.field');
    var lat=m&&parseFloat(m[1]),lon=m&&parseFloat(m[2]);
    if(!m||Math.abs(lat)>90||Math.abs(lon)>180){f.classList.add('bad');toast('Type latitude, then longitude, e.g. 51.47, -0.45');return}
-   f.classList.remove('bad');set(st.work,p+'.latitude',Math.round(lat*1e5)/1e5);set(st.work,p+'.longitude',Math.round(lon*1e5)/1e5);changed()}});
- var az=$('#add-zone',root);if(az)az.onclick=function(){listAt('request_config.radius_requests').push({radius_km:25});changed();render();var l=$$('[data-loc]');if(l.length)l[l.length-1].focus()};
- $$('[data-del-zone]',root).forEach(function(b){b.onclick=function(){listAt('request_config.radius_requests').splice(+b.dataset.delZone,1);changed();render()}});
+   f.classList.remove('bad');updateAreaCentre(+el.dataset.loc,lat,lon);if(areaMap)areaMap.panTo([lat,lon])}});
+ $$('[data-open-zone]',root).forEach(function(b){b.onclick=function(){var i=+b.dataset.openZone;releaseMap();openZone=openZone===i?null:i;render();var toggle=$('[data-open-zone="'+i+'"]');if(toggle)toggle.focus({preventScroll:true})}});
+ var az=$('#add-zone',root);if(az)az.onclick=function(){releaseMap();var zones=listAt('request_config.radius_requests');zones.push({radius_km:25});openZone=zones.length-1;mapView=null;changed();render();$('#map-query').focus({preventScroll:true})};
+ $$('[data-del-zone]',root).forEach(function(b){b.onclick=function(){releaseMap();var i=+b.dataset.delZone;listAt('request_config.radius_requests').splice(i,1);openZone=openZone===i?null:openZone>i?openZone-1:openZone;mapView=null;changed();render()}});
  var ax=$('#add-extra',root);if(ax)ax.onclick=function(){listAt('display_config.clock.additional_timezones').push({label:'',time_zone:{standard_utc_offset_minutes:0,dst_rule:'none'}});changed();render()};
  $$('[data-del-extra]',root).forEach(function(b){b.onclick=function(){listAt('display_config.clock.additional_timezones').splice(+b.dataset.delExtra,1);changed();render()}});
  codeAdder(root,'airline-in','airline-add','request_config.data_filters.airline_icao_filter',/^[A-Z]{3}$/,'Airline codes are three letters, e.g. DAL',32,true);
@@ -633,7 +780,7 @@ var LIMITS={min_speed_mps:1,max_speed_mps:1,min_altitude:1,max_altitude:1};
 function pick(ks,o){var c={};ks.forEach(function(k){if(o[k]!==undefined&&o[k]!==null&&!(LIMITS[k]&&o[k]<0))c[k]=trim(k,o[k])});return c}
 var EDITABLE={display_config:['layout_template','loading_template','title_text','flight_display_speed','max_flights_behavior','metric_display','border_enable','border_brightness_percent','brightness_percent','anchor_airports','time_zone','clock_is_24hr','clock_show_seconds','clock','date_format','locale','display_enabled','sleep_time'],
  request_config:['radius_requests','data_filters','tracked_flights'],
- owned_config:['flight_source','follow_app','tracking_source','scroll_speed']};
+ owned_config:['flight_source','follow_app','tracking_source','scroll_speed','heartbeat_enabled']};
 function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
   EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
   if(e.radius_requests===null)delete e.radius_requests;
@@ -652,8 +799,9 @@ function aliasProblems(){var seen={},n=0;$$('[data-alias-err]').forEach(function
 function failed(e){if(e.status===409){toast('Changed from another browser · reloaded');refresh(true);return}toast(e.message)}
 function markField(f){if(!f)return;var parts=f.split('.'),el=null;
  while(parts.length&&!el){el=$('[data-field="'+parts.join('.')+'"]');parts.pop()}
- if(!el){var tab=/^(request|owned)_config/.test(f)?'flights':/anchor/.test(f)?'airports':/time_zone|clock|date_format|locale/.test(f)?'clock':'display';
+ if(!el){var tab=/^owned_config\.(heartbeat_enabled|scroll_speed)/.test(f)?'display':/^(request|owned)_config/.test(f)?'flights':/anchor/.test(f)?'airports':/time_zone|clock|date_format|locale/.test(f)?'clock':'display';
   if(tab!==st.tab){st.tab=tab;nav();render();return markField(f)}return}
+ var area=el.closest('.area-item');if(area&&!$('.area-editor',area)){openZone=+area.dataset.field.split('.').pop();render();return markField(f)}
  el.classList.add('bad');el.scrollIntoView({block:'center',behavior:'smooth'})}
 $('#bar-discard').onclick=function(){st.work=clone(st.base);st.aliasWork=clone(st.aliases.aliases);if(st.sync)st.syncWork=clone(st.sync);st.syncImport=null;changed();render()};
 $('#bar-save').onclick=function(){var btn=this;$$('.bad').forEach(function(e){e.classList.remove('bad')});
@@ -661,7 +809,7 @@ $('#bar-save').onclick=function(){var btn=this;$$('.bad').forEach(function(e){e.
  if(syncChanged&&syncProblems()){if(st.tab!=='sync'){st.tab='sync';nav();render();syncProblems()}toast('Check the flights');return}
  if(aliasChanged&&aliasProblems()){if(st.tab!=='airports'){st.tab='airports';nav();render();aliasProblems()}toast('Check the airport names');return}
  var zones=get(st.work,'request_config.radius_requests')||[];
- if(zones.some(function(z){return z.latitude==null})){toast('Every area needs a centre');markField('request_config.radius_requests');return}
+ if(zones.some(function(z){return z.latitude==null||z.longitude==null})){openZone=zones.findIndex(function(z){return z.latitude==null||z.longitude==null});st.tab='flights';nav();render();toast('Choose a centre on the map for every area');markField('request_config.radius_requests.'+openZone+'.latitude');return}
  btn.disabled=true;
  var keepAliases=st.aliasWork,p=Promise.resolve();
  if(settingsChanged)p=p.then(function(){return api('/api/settings',{method:'PUT',headers:{'If-Match':String(st.rev)},json:e}).then(function(j){loaded(j,true);st.aliasWork=keepAliases})});

@@ -115,6 +115,7 @@ keys. Each key given replaces the stored value; `null` removes it (not
 |---|---|
 | `flight_source` | `vendor` (default) or `community` (FEED.md, "Community feed") |
 | `follow_app` | bool, default true: changes made in the FlightWall app reach the wall (below, "Changes made in the app") |
+| `heartbeat_enabled` | Boolean, default true: blink the orange pixel at the bottom right; false hides it on every screen |
 | `scroll_speed` | `slow`, `normal` (default) or `fast`: how fast names too long for their line scroll (FLIGHT-SCREENS.md "Long text") |
 | `tracking_source` | `community` (default) or `aeroapi`: where tracked flights' times come from on the community source (FEED.md, "Tracked flights on the community source") |
 
@@ -158,8 +159,7 @@ and settings values are never logged.
 
 ## The dashboard
 
-`main/dashboard.html`, one self-contained page (no external files), dark or
-light with the device setting,
+`main/dashboard.html`, one embedded page, dark or light with the device setting,
 built for a phone first: one column and a four-across tab grid on a phone, two columns
 on a wide screen. Tabs: **Display**, **Clock**, **Flights** (areas, aircraft,
 airlines, tracked flights), **Airports** (airport names, your airports),
@@ -170,6 +170,37 @@ changed, trimmed to what the firmware accepts (vendor documents carry other
 keys and use −1 for unset limits). A refused value is outlined and scrolled
 into view. Speeds are shown in knots and stored in m/s. Games work without
 signing in.
+
+Saved watch areas start collapsed. Expanding an area loads Leaflet 1.9.4
+(with integrity checks) from unpkg and tiles from OpenStreetMap in the browser.
+Tap the map, drag the pin or explicitly search an airport/place (Nominatim;
+no autocomplete). The selected point and radius use the existing
+`radius_requests` settings API. Coordinates remain an optional fallback when
+internet access is unavailable. Only the map and search need internet; the
+rest of the dashboard works on the local network. The wall's pairing key is
+never sent to those services.
+
+Display includes a sample 128×64 preview, using the firmware's 5×7 font and
+mini layout geometry. It reflects draft title, layout, units, brightness,
+border, scrolling, flight dwell time, empty/overflow behavior, power, sleep
+brightness and heartbeat. Logos and perceived LED brightness are approximate.
+The heartbeat switch is owned-only and defaults on for existing installations.
+Reduced-motion browser preferences stop preview animations.
+
+Browser regression checks use Playwright with a Chromium executable (override
+`CHROMIUM_PATH` if needed). Install Playwright in your development environment,
+then cache the pinned map library (build outputs are ignored):
+
+```sh
+mkdir -p runtime/build/deps/leaflet
+curl -fsSL https://unpkg.com/leaflet@1.9.4/dist/leaflet.js -o runtime/build/deps/leaflet/leaflet.js
+curl -fsSL https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o runtime/build/deps/leaflet/leaflet.css
+node runtime/firmware/tests/test_dashboard.mjs
+```
+
+These checks use local wall, tile and search fixtures; no requests reach the
+public map services during the tests. Screenshots are saved under
+`runtime/build/dashboard-tests/`.
 
 Tested in a browser against a stand-in server that runs the real validator
 (`tests/settings_dump.c`): sign-in with a wrong then a right code, every tab

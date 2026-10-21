@@ -247,6 +247,7 @@ bool fw_feed_display(const char *config_json, FwFeedDisplay *out){
     out->max_flights = fw_max_flights_parse(NULL, false, false);
     out->border_percent = 100;
     out->display_enabled = true;
+    out->heartbeat_enabled = flag(item(root, "owned_config"), "heartbeat_enabled", true);
     {   /* owned: how fast long names scroll (FLIGHT-SCREENS.md "Long text") */
         const char *sp = str(item(root, "owned_config"), "scroll_speed");
         out->scroll_px_ms = sp && !strcmp(sp, "slow") ? 80 : sp && !strcmp(sp, "fast") ? 20 : 40;

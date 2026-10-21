@@ -950,6 +950,8 @@ void animate(void *){
     bool canvas_ready = false;
     uint32_t qr_shown = 0;
     int pair_shown_left = -1;
+    uint32_t heartbeat_serial = 0;
+    bool heartbeat_enabled = true, heartbeat_was_enabled = true;
     for (;;) {
         char pair_code[7];
         int pair_left = 0;
@@ -1022,8 +1024,20 @@ void animate(void *){
         }
         /* Heartbeat in the bottom-right corner: blinks about twice a second,
          * so a frozen panel is obvious even on a static screen. */
-        bool on = (tick / 12) % 2;
-        s_panel->drawPixelRGB888(Width - 1, Height - 1, on ? 255 : 0, on ? 64 : 0, 0);
+        /* Read independently of live_step: this also applies on demo, setup,
+         * pairing and game screens, and updates as soon as settings arrive. */
+        if (fw_feed_display_serial() != heartbeat_serial) {
+            FwFeedDisplay d;
+            heartbeat_serial = fw_feed_display_copy(&d);
+            heartbeat_enabled = d.heartbeat_enabled;
+        }
+        if (heartbeat_enabled) {
+            bool on = (tick / 12) % 2;
+            s_panel->drawPixelRGB888(Width - 1, Height - 1, on ? 255 : 0, on ? 64 : 0, 0);
+        } else if (heartbeat_was_enabled) {
+            s_panel->drawPixelRGB888(Width - 1, Height - 1, 0, 0, 0);
+        }
+        heartbeat_was_enabled = heartbeat_enabled;
         ++tick;
         ++s_frames;
         s_stack_free = uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t);

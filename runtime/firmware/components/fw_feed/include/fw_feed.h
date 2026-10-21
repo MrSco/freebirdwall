@@ -88,6 +88,7 @@ typedef struct {
     uint8_t sleep_percent;           /* sleep_time.sleep_brightness_percent (0 = off) */
     bool has_display_config;
     /* owned */
+    bool heartbeat_enabled;         /* owned_config.heartbeat_enabled, default true */
     uint16_t scroll_px_ms;           /* owned_config.scroll_speed: slow 80, normal 40 (default), fast 20 ms a pixel */
 } FwFeedDisplay;
 
