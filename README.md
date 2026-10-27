@@ -93,6 +93,13 @@ sign in up to four browsers this way.
 | <img src="docs/images/dashboard-sync.jpg" alt="Sync" width="260"> | **Sync:** your own trips. Add a flight, or import a calendar (`.ics`) file from a crew or calendar app. The wall counts down to departure, follows the plane in the air, shows what is next, and can show a message for home. |
 | <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flights seen today, the top airlines, the last 48 hours and the last 31 days. **Games:** see [below](#play-games-on-the-wall). **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
 
+**See it before you save it.** Display, Clock and Airports open with a live picture of the wall, drawn by the wall's own
+code: change the layout, the title, the units or an airport's name and the picture changes at once, with your wall's
+flights (or sample ones when none are nearby).
+
+**Areas on a map.** Your areas show as circles on a map. Search for a place or tap the map to put an area there, drag its
+pin to move it, and set its size with the slider. No more typing coordinates (you still can, under **Coordinates**).
+
 Changes collect in a bar at the bottom; press **Save** and they reach the wall within a second.
 
 **The FlightWall app still works.** Settings you change in the app reach the wall too, one setting at a time, so anything you
@@ -165,7 +172,9 @@ mode with only Wi-Fi. Plug in USB, open the installer, and use **Start the vendo
 - **Not official.** FreeBirdWall is not made by or connected with the makers of FlightWall. FlightWall is their name; it is
   used here only to say which hardware this runs on.
 - **Your data stays home.** The dashboard runs on the wall itself, on your Wi-Fi. Sign-in codes, keys and your home location are
-  never written to its logs.
+  never written to its logs. The areas map is the one exception to "nothing leaves your network": your phone loads the map
+  and place search from OpenStreetMap, so OpenStreetMap sees the part of the map you look at. The wall itself never
+  contacts it.
 - **Gentle on the wall.** Settings are saved only when you change something, so the flash memory wears no faster than with the
   original firmware. Tracked flights and trips are looked up about once a minute, not every few seconds.
 - **The board check** confirms the chip (ESP32-S3), 8 MB of flash, that the flash and memory chips leave the display's pins

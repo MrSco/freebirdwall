@@ -100,6 +100,37 @@ input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:32px;marg
 #toast.show{transform:translate(-50%,0)}
 .hidden{display:none!important}
 .console{margin:8px 0 0;max-height:320px;overflow:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+.pv-card{margin-bottom:14px}
+.pv-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.pv-head h2{margin:0}
+.pv-head .seg button{min-width:0;min-height:36px;padding:5px 12px;font-size:14px}
+canvas.pv{display:block;width:100%;max-width:720px;margin:0 auto;aspect-ratio:2/1;background:#08090b;border-radius:12px;border:6px solid #050506;box-shadow:0 6px 24px rgba(0,0,0,.35);transition:filter .3s}
+#pv-note{text-align:center}
+.areas{margin-top:12px}
+.area{border:1px solid var(--line);border-radius:12px;background:var(--panel2);margin-top:8px;overflow:hidden}
+.area-head{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:10px 12px;border:0;background:transparent;text-align:left;cursor:pointer}
+.area-dot{width:12px;height:12px;border-radius:50%;flex:none}
+.area-name{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag{font-size:13px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:2px 9px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chev{width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);margin:-4px 4px 0;flex:none;transition:transform .2s}
+.area.open .chev{transform:rotate(-135deg);margin-top:4px}
+.area-body{padding:0 12px 10px}
+.area-body .field{border-color:var(--line)}
+.area-body input[type=text],.area-body input[type=number]{background:var(--panel)}
+@media (max-width:420px){.area-head{flex-wrap:wrap;row-gap:6px}.chev{order:2}.tags{order:3;width:100%;justify-content:flex-start;padding-left:22px}}
+details.adv summary{cursor:pointer;color:var(--dim);font-weight:600;padding:4px 0}
+details.adv[open] summary{margin-bottom:8px}
+.mapbox{margin-top:10px}
+.map-search{display:flex;gap:8px}
+.map-search input{flex:1;min-width:0;min-height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+.map-results{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.map-results:empty{display:none}
+.map-results .result{text-align:left;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:14px}
+.map{height:340px;margin-top:10px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);z-index:0}
+@media (max-width:600px){.map{height:300px}}
+.map .leaflet-control-attribution{font-size:11px}
+.pin{background:#fff;border:3px solid var(--accent);border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45)}
 </style>
 </head>
 <body>
@@ -135,7 +166,7 @@ function $(s,r){return (r||document).querySelector(s)}
 function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
 function store(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}return null}
 var key=store('fwkey');
-var st={rev:0,doc:null,work:null,aliases:{revision:0,aliases:[]},aliasWork:[],feed:-1,tab:store('fwtab')||'display',dirty:false,games:null};
+var st={rev:0,doc:null,work:null,aliases:{revision:0,aliases:[]},aliasWork:[],feed:-1,tab:store('fwtab')||'display',dirty:false,games:null,areaOpen:-1};
 
 /* ------------------------------------------------------------ helpers */
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -214,7 +245,7 @@ var ALT=[['feet','Feet'],['meters','Metres'],['kilometers','Kilometres'],['nauti
  VR=[['fpm','ft/min'],['fps','ft/s'],['mph','mph'],['kmh','km/h'],['mps','m/s']],
  DIST=[['miles','Miles'],['nautical_miles','Nautical miles'],['kilometers','Kilometres'],['meters','Metres'],['feet','Feet']];
 function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_time');
- return '<div class="grid two">'+
+ return pvCard()+'<div class="grid two">'+
  card('Flight card','What each flight shows.',
   seg(P+'title_text',[['airline','Airline'],['callsign','Callsign'],['registration','Registration']],'airline','Title')+
   seg(P+'layout_template',[['DEFAULT','Logo'],['NO_LOGO','No logo'],['TECHNICAL','Technical']],'DEFAULT','Layout','Technical shows altitude, speed and heading')+
@@ -250,7 +281,7 @@ function zoneOpts(path){var v=get(st.work,path);if(v!=null&&!OFFSETS.some(functi
 function viewClock(){var P='display_config.',extras=get(st.work,P+'clock.additional_timezones')||[],
   lines=(get(st.work,P+'clock.style')==='LARGE'?2:3)-(get(st.work,P+'clock.show_date')?1:0)-1,
   fits=extras.length?Math.max(0,Math.min(extras.length,lines)):0;
- return '<div class="grid two">'+
+ return pvCard(2)+'<div class="grid two">'+
  '<div class="grid">'+
  card('Time zone','Used by the clock, dates and the sleep schedule.',
   sel(P+'time_zone.standard_utc_offset_minutes',zoneOpts(P+'time_zone.standard_utc_offset_minutes'),0,'Standard time','Pick winter time; daylight saving is added below')+
@@ -284,14 +315,7 @@ function viewFlights(){var Q='request_config.',zones=get(st.work,Q+'radius_reque
    'Positions from <a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a>, routes from <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a>: free community services, for personal use. Routes are looked up by callsign and can be missing or out of date. Light aircraft and business jets count as other aircraft.'+
    (tracked.length?' Tracked flights are found by their callsign, one lookup a minute; “Stop after it lands” lasts until the wall restarts.':''):
    'The FlightWall service, with the wall\'s own account: routes, tracked flights and aircraft types.')+'</p>')+
- card('Areas to watch','Up to five circles. Flights inside any of them are shown.',
-  zones.map(function(z,i){var p=Q+'radius_requests.'+i;
-   return '<div class="item" data-field="'+p+'"><div class="head"><span>'+(esc(z.name)||'Area '+(i+1))+'</span>'+(zones.length>1?'<button type="button" class="btn small danger" data-del-zone="'+i+'">Remove</button>':'')+'</div>'+
-   text(p+'.name','Name','','maxlength="31" placeholder="Home"')+
-   '<div class="field" data-field="'+p+'.latitude"><label for="loc'+i+'">Centre<small>Latitude, longitude · copy from a map app</small></label><input type="text" id="loc'+i+'" inputmode="text" autocomplete="off" data-loc="'+i+'" value="'+(z.latitude!=null?z.latitude+', '+z.longitude:'')+'" placeholder="51.4700, -0.4543"></div>'+
-   range(p+'.radius_km',1,250,50,'Radius',' km')+
-   '<div class="two-col">'+altIn(p+'.min_altitude','Lowest altitude')+altIn(p+'.max_altitude','Highest altitude')+'</div></div>'}).join('')+
-  (zones.length<5?'<div class="btns"><button type="button" class="btn" id="add-zone">Add an area</button></div>':''))+
+ viewAreas(zones)+
  '<div class="grid">'+
  card('Which aircraft','',
   sw(Q+'data_filters.show_commercial_ac',true,'Airliners')+sw(Q+'data_filters.show_smalljet_ac',true,'Business jets')+
@@ -328,14 +352,130 @@ function aeroWire(root){var sv=$('#aero-save',root),dl=$('#aero-del',root);if(!s
   api('/api/tracking',{method:'PUT',json:{aeroapi_key:k}}).then(function(t){st.track=t;toast('Key saved');render()}).catch(failed).then(function(){sv.disabled=false})};
  if(dl)dl.onclick=function(){if(!confirm('Remove the FlightAware key from the wall?'))return;
   api('/api/tracking',{method:'PUT',json:{aeroapi_key:null}}).then(function(t){st.track=t;toast('Key removed');render()}).catch(failed)}}
-function altIn(p,label){var v=get(st.work,p);return '<div class="field" data-field="'+p+'"><label for="'+idOf(p)+'">'+label+'<small>Optional</small></label><input type="number" id="'+idOf(p)+'" min="0" max="20000" step="100" inputmode="numeric" data-bind="'+p+'" data-type="int" value="'+(v!=null&&v>=0?v:'')+'"></div>'}
+/* ------------------------------------------------------------ areas to watch, on a map */
+/* Collapsed cards (radius and altitudes at a glance); the open one is edited
+ * on the map: tap or drag to move its centre, search for a place. Leaflet and
+ * the OpenStreetMap pictures and search (Nominatim, one lookup per search)
+ * come over the phone's own internet, pinned and integrity-checked, only once
+ * the Flights tab opens; the wall itself never contacts them. Without
+ * internet the coordinates can still be typed. Radius is stored in km (1..250),
+ * altitudes in metres; both are shown in the units chosen under Display. */
+var AREA_COLORS=['#2ec5d8','#ffb020','#a78bfa','#3ddc84','#ff6b9a'];
+function areaColor(i){return AREA_COLORS[i%AREA_COLORS.length]}
+function distUnit(){var d=get(st.work,'display_config.metric_display.dist_unit');
+ return d==='kilometers'||d==='meters'?{n:'km',k:1}:d==='nautical_miles'?{n:'nm',k:1.852}:{n:'mi',k:1.609344}}
+function altUnit(){return get(st.work,'display_config.metric_display.alt_b_unit')==='feet'?{n:'ft',k:0.3048,step:500}:{n:'m',k:1,step:100}}
+function fmtR(km){var u=distUnit(),v=km/u.k;return (v<10?Math.round(v*10)/10:Math.round(v))+' '+u.n}
+/* the radius slider is logarithmic: 1 km at the left, 250 km at the right */
+function rToS(km){return Math.round(1000*Math.log(Math.max(1,km))/Math.log(250))}
+function sToR(s){var u=distUnit(),v=Math.pow(250,s/1000)/u.k;v=v<10?Math.round(v*10)/10:Math.round(v);return Math.round(Math.min(250,Math.max(1,v*u.k))*1000)/1000}
+function altText(z){var u=altUnit(),a=z.min_altitude!=null&&z.min_altitude>=0?z.min_altitude:null,b=z.max_altitude!=null&&z.max_altitude>=0?z.max_altitude:null,
+  f=function(m){return Math.round(m/u.k).toLocaleString()+' '+u.n};
+ return a==null&&b==null?'All altitudes':a!=null&&b!=null?f(a)+'–'+f(b):a!=null?'Above '+f(a):'Below '+f(b)}
+function altIn(p,label){var v=get(st.work,p),u=altUnit();
+ return '<div class="field" data-field="'+p+'"><label for="'+idOf(p)+'">'+label+'<small>'+u.n+' · empty for any</small></label><input type="number" id="'+idOf(p)+'" min="0" max="'+Math.round(20000/u.k)+'" step="'+u.step+'" inputmode="numeric" data-alt="'+p+'" value="'+(v!=null&&v>=0?Math.round(v/u.k):'')+'" placeholder="Any"></div>'}
+function viewAreas(zones){var Q='request_config.radius_requests.';
+ if(st.areaOpen>=zones.length)st.areaOpen=-1;
+ return card('Areas to watch','Up to five circles; flights inside any of them are shown. Open an area, then tap the map or drag its pin to move it.',
+  '<div id="map-slot"></div><div class="areas">'+zones.map(function(z,i){var p=Q+i,o=st.areaOpen===i;
+   return '<div class="area'+(o?' open':'')+'" data-field="'+p+'"><button type="button" class="area-head" data-area="'+i+'" aria-expanded="'+o+'"><span class="area-dot" style="background:'+areaColor(i)+'"></span>'+
+    '<span class="area-name">'+(esc(z.name)||'Area '+(i+1))+'</span><span class="tags"><span class="tag" id="radt'+i+'">'+(z.latitude==null?'Not placed yet':esc(fmtR(z.radius_km||25)))+'</span><span class="tag">'+esc(altText(z))+'</span></span><span class="chev" aria-hidden="true"></span></button>'+
+    (o?areaBody(z,i,p,zones.length):'')+'</div>'}).join('')+'</div>'+
+  (zones.length<5?'<div class="btns"><button type="button" class="btn" id="add-zone">Add an area</button></div>':''))}
+function areaBody(z,i,p,n){var km=z.radius_km||25;
+ return '<div class="area-body">'+
+  (z.latitude==null?'<p class="note" style="margin:0 0 4px"><b>Search for a place above, or tap the map</b> to put this area there.</p>':'')+
+  text(p+'.name','Name','','maxlength="31" placeholder="Home"')+
+  '<div class="field" data-field="'+p+'.radius_km"><label for="rad'+i+'">Radius</label><div class="row"><input type="range" id="rad'+i+'" min="0" max="1000" value="'+rToS(km)+'" data-radius="'+i+'" aria-label="Radius"><span class="rangeval" id="radv'+i+'">'+esc(fmtR(km))+'</span></div></div>'+
+  '<div class="two-col">'+altIn(p+'.min_altitude','Lowest altitude')+altIn(p+'.max_altitude','Highest altitude')+'</div>'+
+  '<details class="field adv"'+(MAP.failed?' open':'')+'><summary>Coordinates</summary>'+
+  '<div class="field" data-field="'+p+'.latitude"><label for="loc'+i+'">Centre<small>Latitude, longitude · e.g. from a map app</small></label><input type="text" id="loc'+i+'" inputmode="text" autocomplete="off" data-loc="'+i+'" value="'+(z.latitude!=null?z.latitude+', '+z.longitude:'')+'" placeholder="26.3683, -80.1289"></div></details>'+
+  (n>1?'<div class="btns" style="margin-top:4px"><button type="button" class="btn small danger" data-del-zone="'+i+'">Remove this area</button></div>':'')+'</div>'}
+function round5(v){return Math.round(v*1e5)/1e5}
+function wrapLon(v){return round5(((v+180)%360+360)%360-180)}
+function areaPlace(i,lat,lon){var p='request_config.radius_requests.'+i;
+ set(st.work,p+'.latitude',round5(Math.max(-85,Math.min(85,lat))));set(st.work,p+'.longitude',wrapLon(lon));clearBad($('[data-field="'+p+'"]')||document.body);changed();render()}
+
+var MAP={el:null,map:null,layer:null,circle:null,loading:null,failed:false,fitted:-2};
+function mapRes(tag,url,hash){return new Promise(function(ok,no){var e=document.createElement(tag),t=setTimeout(function(){e.onerror()},15000);
+ e.integrity=hash;e.crossOrigin='anonymous';e.onload=function(){clearTimeout(t);ok()};e.onerror=function(){clearTimeout(t);if(e.parentNode)e.parentNode.removeChild(e);no(new Error('map'))};
+ if(tag==='link'){e.rel='stylesheet';e.href=url}else e.src=url;document.head.appendChild(e)})}
+function leaflet(){if(window.L)return Promise.resolve(window.L);
+ return MAP.loading||(MAP.loading=Promise.all([
+   mapRes('link','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css','sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='),
+   mapRes('script','https://unpkg.com/leaflet@1.9.4/dist/leaflet.js','sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=')])
+  .then(function(){return window.L},function(e){MAP.loading=null;throw e}))}
+function mapMsg(t){var m=MAP.el&&$('.map-msg',MAP.el);if(m)m.textContent=t}
+function mapMount(root){var slot=$('#map-slot',root);if(!slot)return;
+ if(!MAP.el){MAP.el=document.createElement('div');MAP.el.className='mapbox';
+  MAP.el.innerHTML='<form class="map-search" role="search"><input type="search" placeholder="Search for a place or address" autocomplete="off" enterkeyhint="search" aria-label="Search for a place"><button class="btn" type="submit">Search</button></form>'+
+   '<div class="map-results"></div><div class="map" aria-label="Map of your areas"></div><p class="note map-msg"></p>';
+  $('form',MAP.el).onsubmit=function(e){e.preventDefault();mapSearch($('input',MAP.el).value)}}
+ slot.appendChild(MAP.el);
+ if(MAP.map){MAP.map.invalidateSize();mapDraw();return}
+ mapMsg('Loading the map…');
+ leaflet().then(function(L){if(MAP.map)return;
+   MAP.map=L.map($('.map',MAP.el),{scrollWheelZoom:false,worldCopyJump:true}).setView([25,-40],2);
+   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+    attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'})
+    .on('tileerror',function(){mapMsg('Some map pictures did not load. Check the internet connection.')}).addTo(MAP.map);
+   MAP.layer=L.layerGroup().addTo(MAP.map);
+   MAP.map.on('click',function(e){var i=st.areaOpen,zones=get(st.work,'request_config.radius_requests')||[];
+    if(i<0&&zones.length===1)i=st.areaOpen=0;
+    if(i<0){toast('Open an area below first');return}
+    areaPlace(i,e.latlng.lat,e.latlng.lng)});
+   mapMsg('');MAP.fitted=-2;mapDraw()})
+ .catch(function(){MAP.failed=true;mapMsg('The map needs an internet connection on this phone or computer. Open an area to type its coordinates instead.')})}
+function mapDraw(){if(!MAP.map||!MAP.el.isConnected)return;
+ var L=window.L,zones=get(st.work,'request_config.radius_requests')||[],sel=st.areaOpen,all=null;
+ MAP.layer.clearLayers();MAP.circle=null;
+ zones.forEach(function(z,i){if(z.latitude==null)return;var on=i===sel,
+   c=L.circle([z.latitude,z.longitude],{radius:(z.radius_km||25)*1000,color:areaColor(i),weight:on?3:2,opacity:on||sel<0?1:.55,fillOpacity:on?.22:.1}).addTo(MAP.layer);
+  c.on('click',function(e){L.DomEvent.stopPropagation(e);if(st.areaOpen!==i){st.areaOpen=i;render()}else areaPlace(i,e.latlng.lat,e.latlng.lng)});
+  if(on){MAP.circle=c;
+   var pin=L.marker([z.latitude,z.longitude],{draggable:true,keyboard:false,title:'Drag to move',icon:L.divIcon({className:'pin',iconSize:[22,22]})}).addTo(MAP.layer);
+   pin.on('drag',function(e){c.setLatLng(e.target.getLatLng())});
+   pin.on('dragend',function(e){var ll=e.target.getLatLng();areaPlace(i,ll.lat,ll.lng)})}
+  all=all?all.extend(c.getBounds()):L.latLngBounds(c.getBounds().getSouthWest(),c.getBounds().getNorthEast())});
+ var want=MAP.circle?sel:-1;
+ if(MAP.fitted!==want){MAP.fitted=want;if(MAP.circle)MAP.map.fitBounds(MAP.circle.getBounds().pad(.3));else if(all)MAP.map.fitBounds(all.pad(.15))}}
+function mapSearch(q){var box=$('.map-results',MAP.el);q=q.trim();if(!q)return;box.innerHTML='<p class="note" style="margin:0">Searching…</p>';
+ fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'Accept-Language':navigator.language||'en'}})
+ .then(function(r){if(!r.ok)throw new Error();return r.json()}).then(function(list){
+  if(!list.length){box.innerHTML='<p class="note" style="margin:0">Nothing found. Try a town or a full address.</p>';return}
+  box.innerHTML=list.map(function(p,i){return '<button type="button" class="result" data-i="'+i+'">'+esc(p.display_name)+'</button>'}).join('');
+  $$('.result',box).forEach(function(b){b.onclick=function(){var p=list[+b.dataset.i];box.innerHTML='';mapPick(+p.lat,+p.lon,p.name||'')}})})
+ .catch(function(){box.innerHTML='<p class="note" style="margin:0">Search needs an internet connection. Try again in a moment.</p>'})}
+/* a search result: moves the open area there, or adds one */
+function mapPick(lat,lon,name){var zones=listAt('request_config.radius_requests'),i=st.areaOpen;
+ if(i<0&&zones.length===1&&zones[0].latitude==null)i=0;
+ if(i<0){if(zones.length>=5){toast('Open the area to move first');return}zones.push({radius_km:8});i=zones.length-1}
+ if(!zones[i].name&&name)zones[i].name=String(name).slice(0,31);
+ st.areaOpen=i;MAP.fitted=-3;areaPlace(i,lat,lon)}
+function areasWire(root){
+ $$('[data-area]',root).forEach(function(b){b.onclick=function(){var i=+b.dataset.area;st.areaOpen=st.areaOpen===i?-1:i;render()}});
+ $$('[data-radius]',root).forEach(function(el){var i=+el.dataset.radius;
+  el.oninput=function(){var km=sToR(+el.value),t=fmtR(km);set(st.work,'request_config.radius_requests.'+i+'.radius_km',km);
+   $('#radv'+i).textContent=t;var tg=$('#radt'+i);if(tg&&tg.textContent!=='Not placed yet')tg.textContent=t;if(MAP.circle)MAP.circle.setRadius(km*1000);changed()};
+  el.onchange=function(){MAP.fitted=-3;mapDraw()}});
+ $$('[data-alt]',root).forEach(function(el){el.onchange=function(){var u=altUnit(),v=el.value.trim();clearBad(el);
+  set(st.work,el.dataset.alt,v===''?undefined:Math.max(0,Math.min(20000,Math.round(Number(v)*u.k))));changed();render()}});
+ $$('[data-loc]',root).forEach(function(el){el.onchange=function(){var m=el.value.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/),f=el.closest('.field'),
+   lat=m&&parseFloat(m[1]),lon=m&&parseFloat(m[2]);
+  if(!m||Math.abs(lat)>90||Math.abs(lon)>180){f.classList.add('bad');toast('Type latitude, then longitude, e.g. 26.37, -80.13');return}
+  f.classList.remove('bad');MAP.fitted=-3;areaPlace(+el.dataset.loc,lat,lon)}});
+ var az=$('#add-zone',root);if(az)az.onclick=function(){var l=listAt('request_config.radius_requests'),c=MAP.map&&MAP.map.getZoom()>=7?MAP.map.getCenter():null;
+  l.push(c?{latitude:round5(c.lat),longitude:wrapLon(c.lng),radius_km:8}:{radius_km:8});st.areaOpen=l.length-1;MAP.fitted=-3;changed();render();
+  if(!c){var q=MAP.el&&$('input',MAP.el);if(q)q.focus()}};
+ $$('[data-del-zone]',root).forEach(function(b){b.onclick=function(){listAt('request_config.radius_requests').splice(+b.dataset.delZone,1);st.areaOpen=-1;changed();render()}});
+ mapMount(root)}
 function speedIn(k,label){var p='request_config.data_filters.'+k,v=get(st.work,p);
  return '<div class="field" data-field="'+p+'"><label for="'+idOf(p)+'">'+label+'<small>Knots, optional</small></label><input type="number" id="'+idOf(p)+'" min="0" max="777" step="10" inputmode="numeric" data-speed="'+p+'" value="'+(v!=null&&v>=0?Math.round(v/KTS):'')+'"></div>'}
 
 /* ------------------------------------------------------------ Airports */
 var KINDS=[['iata','3-letter code'],['icao','4-letter code'],['name','Name']];
 function viewAirports(){var list=st.aliasWork,anchors=get(st.work,'display_config.anchor_airports')||[];
- return '<div class="grid two">'+
+ return pvCard(0)+'<div class="grid two">'+
  card('Airport names','Show your own name for an airport. Owned firmware only. Up to 16.',
   list.map(function(a,i){var ph=a.kind==='name'?'Donald J Trump Intl':a.kind==='iata'?'PBI':'KPBI';
    return '<div class="item" data-alias="'+i+'"><div class="head"><span>'+(esc(a.from)||'New')+' → '+(esc(a.to)||'…')+'</span><button type="button" class="btn small danger" data-del-alias="'+i+'">Remove</button></div>'+
@@ -381,6 +521,77 @@ function viewDevice(){return '<div class="grid two">'+
   '<p class="note" style="margin-top:4px">Up to four browsers can be signed in. The oldest is signed out when a fifth signs in.</p>'+
   '<div class="btns"><button type="button" class="btn" id="signout">Sign out this browser</button><button type="button" class="btn danger" id="signout-all">Sign out everywhere</button></div>')+
  '</div>'}
+
+/* ------------------------------------------------------------ preview (DASHBOARD.md "Preview") */
+/* The wall's own screen code, built for the browser (/preview.wasm from
+ * tools/build_preview.py; tests/test_preview.py keeps it pixel-identical to
+ * the desktop build of the same sources), draws the settings being edited,
+ * before they are saved: the wall's own flights now (/api/flights, logos from
+ * /api/logo), or samples when it has none. Brightness is not in the pixels on
+ * the wall either, so the picture is only dimmed to hint at it. */
+var PV={mod:null,el:null,failed:false,loading:false,mode:0,cur:-1,sent:'',sentA:'',sentF:'',logos:{},t0:0,flightsAt:0,live:false};
+var SAMPLE={overflow:0,flights:[
+ {icao:'a0f1b2',cs:'JBU615',reg:'N594JB',al_code:'JBU',al_name:'JetBlue Airways',orig_iata:'BOS',dest_iata:'FLL',orig_icao:'KBOS',dest_icao:'KFLL',orig:'Boston Logan Intl',dest:'Fort Lauderdale Hollywood Intl',ac_type:'A320',ac_name:'A320',alt_b:10668,vel:231,trk:172,vr:0},
+ {icao:'a4c3d2',cs:'DAL402',reg:'N392DN',al_code:'DAL',al_name:'Delta Air Lines',orig_iata:'ATL',dest_iata:'PBI',orig_icao:'KATL',dest_icao:'KPBI',orig:'Hartsfield-Jackson Atlanta Intl',dest:'Palm Beach Intl',ac_type:'A321',ac_name:'A321',alt_b:9449,vel:221,trk:135,vr:-5},
+ {icao:'a1e2f3',cs:'UAL1871',reg:'N24976',al_code:'UAL',al_name:'United Airlines',orig_iata:'EWR',dest_iata:'MIA',orig_icao:'KEWR',dest_icao:'KMIA',orig:'Newark Liberty Intl',dest:'Miami Intl',ac_type:'B789',ac_name:'787-9',alt_b:11582,vel:250,trk:190,vr:0}]};
+/* fixed: 2 the clock, 0 flights; none: a Flights / No flights switch */
+function pvCard(fixed){PV.want=fixed===undefined?PV.mode:fixed;
+ return '<section class="card pv-card"><div class="pv-head"><h2>Preview</h2>'+(fixed===undefined?'<div class="seg" role="group" aria-label="Preview shows">'+
+  [[0,'Flights'],[1,'No flights']].map(function(o){return '<button type="button" data-pv="'+o[0]+'" aria-pressed="'+(PV.mode===o[0])+'">'+o[1]+'</button>'}).join('')+'</div>':'')+
+  '</div><div id="pv-slot"></div><p class="note" id="pv-note">Loading the preview…</p></section>'}
+function pvStr(s){var b=new TextEncoder().encode(s),m=PV.mod,p=m.pv_alloc(b.length+1),v=new Uint8Array(m.memory.buffer,p,b.length+1);v.set(b);v[b.length]=0;return p}
+function pvCall(fn){var ps=Array.prototype.slice.call(arguments,1).map(pvStr);fn.apply(null,ps);ps.forEach(function(p){PV.mod.pv_free(p)})}
+function pvText(p){var m=new Uint8Array(PV.mod.memory.buffer),e=p;while(m[e])e++;return new TextDecoder().decode(m.subarray(p,e))}
+function pvBoot(){if(PV.mod||PV.failed||PV.loading)return;PV.loading=true;
+ var stub={fd_prestat_get:function(){return 8},fd_prestat_dir_name:function(){return 8},proc_exit:function(){throw new Error('preview stopped')},
+  random_get:function(p,n){crypto.getRandomValues(new Uint8Array(PV.mod.memory.buffer,p,n));return 0}};
+ (window.WebAssembly?fetch('/preview.wasm'):Promise.reject()).then(function(r){if(!r.ok)throw new Error();return r.arrayBuffer()})
+ .then(function(b){return WebAssembly.instantiate(b,{wasi_snapshot_preview1:stub})})
+ .then(function(r){PV.mod=r.instance.exports;PV.mod._initialize();PV.t0=performance.now();pvSync();pvFlights()})
+ .catch(function(){PV.failed=true;pvNote()}).then(function(){PV.loading=false})}
+function pvMake(){var c=document.createElement('canvas'),m=document.createElement('canvas'),x,y,i;
+ c.width=m.width=1024;c.height=m.height=512;c.className='pv';c.setAttribute('role','img');c.setAttribute('aria-label','Preview of the wall');
+ PV.el=c;PV.ctx=c.getContext('2d');PV.small=document.createElement('canvas');PV.small.width=128;PV.small.height=64;PV.sctx=PV.small.getContext('2d');PV.img=PV.sctx.createImageData(128,64);
+ x=m.getContext('2d');x.fillStyle='#08090b';x.fillRect(0,0,1024,512);x.globalCompositeOperation='destination-out';x.beginPath();
+ for(y=0;y<64;y++)for(i=0;i<128;i++){x.moveTo(i*8+7.3,y*8+4);x.arc(i*8+4,y*8+4,3.3,0,6.2832)}
+ x.fill();PV.mask=m;pvDraw()}
+/* each pixel of the frame as one LED; unlit LEDs stay faintly visible, as on the panel */
+function pvDraw(){if(!PV.ctx)return;var d=PV.img.data,f=PV.mod?new Uint8Array(PV.mod.memory.buffer,PV.mod.pv_frame(),32768):null,i,r,g,b;
+ for(i=0;i<32768;i+=4){r=f?f[i]:0;g=f?f[i+1]:0;b=f?f[i+2]:0;if(!(r|g|b)){r=30;g=31;b=36}d[i]=r;d[i+1]=g;d[i+2]=b;d[i+3]=255}
+ PV.sctx.putImageData(PV.img,0,0);PV.ctx.imageSmoothingEnabled=false;PV.ctx.drawImage(PV.small,0,0,1024,512);PV.ctx.drawImage(PV.mask,0,0)}
+function pvSync(){if(!PV.mod||!st.work)return;var a=JSON.stringify(st.aliasWork||[]),w=JSON.stringify(st.work);
+ if(a!==PV.sentA){PV.sentA=a;pvCall(PV.mod.pv_aliases,a)}
+ if(w!==PV.sent){PV.sent=w;pvCall(PV.mod.pv_settings,w)}
+ pvNote()}
+function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();
+ api('/api/flights').catch(function(){return null}).then(function(j){var live=!!(j&&j.flights&&j.flights.length),s=JSON.stringify(live?j:SAMPLE);
+  PV.live=live;if(s!==PV.sentF){PV.sentF=s;pvCall(PV.mod.pv_flights,s)}pvNote()})}
+function pvLogos(){for(var i=0,p,k;i<8&&(p=PV.mod.pv_logo_wanted(i));i++){k=pvText(p);if(!PV.logos[k]){PV.logos[k]=1;pvLogo(k)}}}
+function pvLogo(k){var al=k.split('|')[0],ac=k.split('|')[1]||'';
+ fetch('/api/logo?al='+encodeURIComponent(al)+'&ac='+encodeURIComponent(ac),{headers:key?{Authorization:'Bearer '+key}:{}})
+ .then(function(r){return r.ok?r.arrayBuffer():new ArrayBuffer(0)},function(){return new ArrayBuffer(0)})
+ .then(function(b){var m=PV.mod,bytes=new Uint8Array(b),pa=pvStr(al),pc=pvStr(ac),pp=bytes.length?m.pv_alloc(bytes.length):0;
+  if(pp)new Uint8Array(m.memory.buffer,pp,bytes.length).set(bytes);
+  m.pv_logo(pa,pc,pp,bytes.length);[pa,pc,pp].forEach(function(x){if(x)m.pv_free(x)})})}
+/* what the note under the picture says, and how dim the picture is */
+function pvNote(){var n=$('#pv-note');if(!n)return;
+ if(PV.failed){n.textContent='The preview needs a newer browser.';return}
+ if(!PV.mod){n.textContent='Loading the preview…';return}
+ var m=PV.mod,on=m.pv_power(0),pct=m.pv_power(1)||100,a=m.pv_power(3),b=m.pv_power(4),now=m.pv_power(6),
+  asleep=m.pv_power(2)&&now>=0&&(a<b?now>=a&&now<b:now>=a||now<b),t=[];
+ if(asleep)pct=m.pv_power(5);
+ if(PV.want!==2)t.push(PV.want===1?'When no flights are nearby':PV.live?'Your wall’s flights right now':'Sample flights · none nearby right now');
+ t.push(!on?'Display off':asleep?(pct?'Asleep now · '+pct+'%':'Asleep now · panel off'):'Brightness '+pct+'%');
+ n.textContent=t.join(' · ');
+ if(PV.el)PV.el.style.filter=!on||(asleep&&!pct)?'brightness(.3)':'brightness('+(0.55+0.45*Math.sqrt(pct/100)).toFixed(2)+')'}
+function pvMount(root){var slot=$('#pv-slot',root);if(!slot)return;
+ if(!PV.el)pvMake();slot.appendChild(PV.el);pvBoot();pvSync();pvTick()}
+function pvTick(){if(!PV.mod||!PV.el||!PV.el.isConnected||document.hidden)return;
+ if(PV.cur!==PV.want){PV.cur=PV.want;PV.mod.pv_mode(PV.want);pvNote()}
+ if(Date.now()-PV.flightsAt>20000)pvFlights();
+ if(PV.mod.pv_step((performance.now()-PV.t0)>>>0,Date.now()/1000))pvDraw();
+ pvLogos()}
+setInterval(pvTick,40);
 
 /* ------------------------------------------------------------ render */
 /* ------------------------------------------------------------ Stats */
@@ -554,8 +765,8 @@ function syncLoad(){if(!key)return;api('/api/sync').then(function(j){st.sync=j;s
 var VIEWS={display:viewDisplay,clock:viewClock,flights:viewFlights,airports:viewAirports,sync:viewSync,stats:viewStats,games:viewGames,device:viewDevice};
 function render(){var m=$('#main'),y=window.scrollY;
  if(!(key&&st.doc)){m.innerHTML=viewGames();gamesWire();return}
- m.innerHTML=(VIEWS[st.tab]||viewDisplay)();wire(m);gamesWire();statsLoad();window.scrollTo(0,y)}
-function changed(){st.dirty=!same(st.work,st.base)||!same(st.aliasWork,st.aliases.aliases)||!!(st.sync&&!same(st.syncWork,st.sync));$('#bar').classList.toggle('show',st.dirty)}
+ m.innerHTML=(VIEWS[st.tab]||viewDisplay)();wire(m);pvMount(m);gamesWire();statsLoad();window.scrollTo(0,y)}
+function changed(){st.dirty=!same(st.work,st.base)||!same(st.aliasWork,st.aliases.aliases)||!!(st.sync&&!same(st.syncWork,st.sync));$('#bar').classList.toggle('show',st.dirty);pvSync()}
 function clearBad(el){var f=el.closest('.bad');if(f)f.classList.remove('bad')}
 
 /* list helpers */
@@ -582,12 +793,8 @@ function wire(root){
    changed();if(t==='boolean')render();else if(/\.(name|label)$/.test(el.dataset.bind))heading(el,v||'')})});
  var so=$('#sleepOn',root);if(so)so.onchange=function(){set(st.work,'display_config.sleep_time',so.checked?{start:'23:00',end:'07:00',sleep_brightness_percent:0}:undefined);changed();render()};
  $$('[data-speed]',root).forEach(function(el){el.onchange=function(){clearBad(el);set(st.work,el.dataset.speed,el.value===''?undefined:Math.min(400,Math.max(0,Math.round(Number(el.value)*KTS))));changed()}});
- $$('[data-loc]',root).forEach(function(el){el.onchange=function(){var m=el.value.match(/(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)/),p='request_config.radius_requests.'+el.dataset.loc,f=el.closest('.field');
-   var lat=m&&parseFloat(m[1]),lon=m&&parseFloat(m[2]);
-   if(!m||Math.abs(lat)>90||Math.abs(lon)>180){f.classList.add('bad');toast('Type latitude, then longitude, e.g. 51.47, -0.45');return}
-   f.classList.remove('bad');set(st.work,p+'.latitude',Math.round(lat*1e5)/1e5);set(st.work,p+'.longitude',Math.round(lon*1e5)/1e5);changed()}});
- var az=$('#add-zone',root);if(az)az.onclick=function(){listAt('request_config.radius_requests').push({radius_km:25});changed();render();var l=$$('[data-loc]');if(l.length)l[l.length-1].focus()};
- $$('[data-del-zone]',root).forEach(function(b){b.onclick=function(){listAt('request_config.radius_requests').splice(+b.dataset.delZone,1);changed();render()}});
+ areasWire(root);
+ $$('[data-pv]',root).forEach(function(b){b.onclick=function(){PV.mode=+b.dataset.pv;render()}});
  var ax=$('#add-extra',root);if(ax)ax.onclick=function(){listAt('display_config.clock.additional_timezones').push({label:'',time_zone:{standard_utc_offset_minutes:0,dst_rule:'none'}});changed();render()};
  $$('[data-del-extra]',root).forEach(function(b){b.onclick=function(){listAt('display_config.clock.additional_timezones').splice(+b.dataset.delExtra,1);changed();render()}});
  codeAdder(root,'airline-in','airline-add','request_config.data_filters.airline_icao_filter',/^[A-Z]{3}$/,'Airline codes are three letters, e.g. DAL',32,true);

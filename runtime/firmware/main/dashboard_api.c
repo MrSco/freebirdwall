@@ -5,6 +5,7 @@
 #include "dashboard_api.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <time.h>
 #include "esp_random.h"
@@ -25,6 +26,8 @@
 #include "app_settings.h"
 #include "aero_key.h"
 #include "community.h"
+#include "fw_assets.h"
+#include "fw_logo.h"
 
 #define BODY_MAX 8192
 #define PAIR_START_GAP_MS 5000
@@ -416,6 +419,105 @@ static esp_err_t aliases_put(httpd_req_t *req){
     return send_settings(req, "200 OK");
 }
 
+/* ------------------------------------------------------------ the display preview */
+
+static void add_str(cJSON *o, const char *k, const char *v){ if (v[0]) cJSON_AddStringToObject(o, k, v); }
+static void add_num(cJSON *o, const char *k, double v){ if (!isnan(v)) cJSON_AddNumberToObject(o, k, v); }
+static void add_flag(cJSON *o, const char *k, bool v){ if (v) cJSON_AddTrueToObject(o, k); }
+
+/* The flights the wall has now, for the dashboard's preview (DASHBOARD.md
+ * "Preview"): {"state":n,"tracked":b,"overflow":n,"flights":[{FwFlight's
+ * fields by name; empty and unknown ones left out}]}. */
+static esp_err_t flights_get(httpd_req_t *req){
+    FwFeedFrame *fr;
+    cJSON *root, *list;
+    char *out;
+    esp_err_t r;
+    if (!gate(req)) return ESP_OK;
+    if (!(fr = malloc(sizeof *fr))) return error(req, "500 Internal Server Error", "out of memory");
+    fw_feed_copy(fr);
+    root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "state", (int)fw_feed_state());
+    cJSON_AddBoolToObject(root, "tracked", fr->tracked);
+    cJSON_AddNumberToObject(root, "overflow", fr->overflow);
+    list = cJSON_AddArrayToObject(root, "flights");
+    for (int i = 0; i < fr->count && list; ++i) {
+        const FwFlight *f = &fr->flights[i];
+        cJSON *o = cJSON_CreateObject();
+        char sts[2] = {f->sts, 0};
+        if (!o) break;
+        add_str(o, "icao", f->icao); add_str(o, "cs", f->cs); add_str(o, "reg", f->reg);
+        add_num(o, "alt_b", f->alt_b); add_num(o, "alt_g", f->alt_g); add_num(o, "vel", f->vel);
+        add_num(o, "trk", f->trk); add_num(o, "vr", f->vr); add_flag(o, "gnd", f->gnd);
+        add_str(o, "sqk", f->sqk);
+        add_str(o, "orig_icao", f->orig_icao); add_str(o, "orig_iata", f->orig_iata);
+        add_str(o, "dest_icao", f->dest_icao); add_str(o, "dest_iata", f->dest_iata);
+        add_str(o, "orig", f->orig); add_str(o, "dest", f->dest);
+        add_str(o, "al_code", f->al_code); add_str(o, "al_paint", f->al_paint); add_str(o, "al_op", f->al_op);
+        add_str(o, "al_name", f->al_name);
+        add_str(o, "ac_type", f->ac_type); add_str(o, "ac_name", f->ac_name); add_str(o, "ac_class", f->ac_class);
+        add_flag(o, "has_trk", f->has_trk); add_str(o, "sts", sts);
+        if (f->sexp) cJSON_AddNumberToObject(o, "sexp", (double)f->sexp);
+        add_num(o, "prog", f->prog); add_num(o, "dist", f->dist);
+        add_str(o, "conf", f->conf); add_str(o, "dep", f->dep); add_str(o, "arr", f->arr);
+        add_str(o, "over", f->over); add_str(o, "tft", f->tft);
+        add_flag(o, "trk_gnd", f->trk_gnd); add_flag(o, "trk_metrics", f->trk_metrics);
+        cJSON_AddItemToArray(list, o);
+    }
+    free(fr);
+    out = root ? cJSON_PrintUnformatted(root) : NULL;
+    cJSON_Delete(root);
+    if (!out) return error(req, "500 Internal Server Error", "out of memory");
+    r = reply(req, "200 OK", out);
+    cJSON_free(out);
+    return r;
+}
+
+/* %XX and + in a query value, in place. */
+static void url_decode(char *s){
+    char *o = s;
+    for (; *s; ++s) {
+        if (*s == '+') *o++ = ' ';
+        else if (*s == '%' && s[1] && s[2]) {
+            char hex[3] = {s[1], s[2], 0};
+            *o++ = (char)strtol(hex, NULL, 16);
+            s += 2;
+        } else *o++ = *s;
+    }
+    *o = 0;
+}
+
+static bool logo_exists(void *ctx, const char *path){ (void)ctx; return fw_assets_exists(path); }
+
+/* GET /api/logo?al=<airline code>&ac=<aircraft class>: the logo file the wall
+ * itself would draw for that flight (LOGOS.md), resolved and read from the
+ * asset partition like display.cpp's decode_logo; 404 when there is none. */
+static esp_err_t logo_get(httpd_req_t *req){
+    char q[96], al[8] = "", ac[32] = "", path_buf[FW_LOGO_PATH_MAX];
+    const char *path;
+    uint8_t *buf;
+    esp_err_t r;
+    int n;
+    if (!gate(req)) return ESP_OK;
+    if (httpd_req_get_url_query_str(req, q, sizeof q) == ESP_OK) {
+        if (httpd_query_key_value(q, "al", al, sizeof al) != ESP_OK) al[0] = 0;
+        if (httpd_query_key_value(q, "ac", ac, sizeof ac) != ESP_OK) ac[0] = 0;
+        url_decode(al);
+        url_decode(ac);
+    }
+    if (!fw_assets_mount_partition()) return error(req, "404 Not Found", "no logos");
+    path = fw_logo_resolve(al, ac, logo_exists, NULL, path_buf, sizeof path_buf);
+    if (!path) return error(req, "404 Not Found", "no logo");
+    if (!(buf = malloc(4096))) return error(req, "500 Internal Server Error", "out of memory");
+    n = fw_assets_read_file(path, buf, 4096);       /* the largest logo is 2,907 bytes */
+    if (n <= 0) { free(buf); return error(req, "404 Not Found", "no logo"); }
+    httpd_resp_set_type(req, "image/png");
+    httpd_resp_set_hdr(req, "Cache-Control", "private, max-age=86400");
+    r = httpd_resp_send(req, (const char *)buf, n);
+    free(buf);
+    return r;
+}
+
 void fw_dashboard_api_register(httpd_handle_t h){
     static const httpd_uri_t routes[] = {
         {.uri = "/api/session", .method = HTTP_GET, .handler = session_get},
@@ -433,6 +535,8 @@ void fw_dashboard_api_register(httpd_handle_t h){
         {.uri = "/api/sync", .method = HTTP_PUT, .handler = sync_put},
         {.uri = "/api/tracking", .method = HTTP_GET, .handler = tracking_get},
         {.uri = "/api/tracking", .method = HTTP_PUT, .handler = tracking_put},
+        {.uri = "/api/flights", .method = HTTP_GET, .handler = flights_get},
+        {.uri = "/api/logo", .method = HTTP_GET, .handler = logo_get},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(h, &routes[i]);
 }

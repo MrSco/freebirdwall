@@ -158,13 +158,15 @@ and settings values are never logged.
 
 ## The dashboard
 
-`main/dashboard.html`, one self-contained page (no external files), dark or
+`main/dashboard.html`, one page (the areas map loads OpenStreetMap; DASHBOARD.md), dark or
 light with the device setting,
 built for a phone first: one column and a four-across tab grid on a phone, two columns
 on a wide screen. Tabs: **Display**, **Clock**, **Flights** (areas, aircraft,
 airlines, tracked flights), **Airports** (airport names, your airports),
 **Stats** (flights seen: today, top airlines, 48 hours, 31 days; ANALYTICS.md),
-**Games**, **Device** (feed state, the FlightWall app, console, sign out). Changes collect in a
+**Games**, **Device** (feed state, the FlightWall app, console, sign out). Display, Clock and
+Airports open with a preview of the wall (DASHBOARD.md "Preview"); areas are edited on a
+map (DASHBOARD.md "Areas map"). Changes collect in a
 bar at the bottom (**Save** / **Discard**); Save sends only the keys that
 changed, trimmed to what the firmware accepts (vendor documents carry other
 keys and use −1 for unset limits). A refused value is outlined and scrolled

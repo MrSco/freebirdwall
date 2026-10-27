@@ -57,9 +57,11 @@ idf.py -B build-keep -D SDKCONFIG=sdkconfig.keep -D SDKCONFIG_DEFAULTS="sdkconfi
 py ../../installer/tools/build_installer.py # the USB installer page, from build-keep/freebirdwall.bin
 py ../../installer/tools/publish_site.py    # put it on the website (docs/)
 py tools/package_owned.py --image build-keep/freebirdwall.bin --out build-keep/package   # a Wi-Fi update for one wall
+py tools/build_preview.py                   # after changing the screen code: the dashboard preview (needs Zig 0.13)
 ```
 
-Desktop tests: `py tests/run_host_tests.py` and `tests/test_*.py`.
+Desktop tests: `py tests/run_host_tests.py` and `tests/test_*.py` (`test_preview.py` needs Node.js;
+DASHBOARD.md "Preview").
 
 ## Packaging for the Wi-Fi updater
 

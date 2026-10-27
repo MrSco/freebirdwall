@@ -2,7 +2,9 @@
 #define FLIGHTWALL_FW_ASSETS_H
 /* Read-only access to the vendor's LittleFS asset partition (airline logos,
  * category icons, system logo). Never writes: littlefs is built with
- * LFS_READONLY and the block device has no write path. One caller at a time. */
+ * LFS_READONLY and the block device has no write path. On the board every
+ * call takes one mutex, so any task may call (the display, the community
+ * worker, the dashboard's logo route). */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -18,7 +20,8 @@ typedef int (*FwAssetsRead)(void *ctx, uint32_t offset, void *buf, uint32_t size
 bool fw_assets_mount(FwAssetsRead read, void *ctx, uint32_t partition_bytes);
 
 #ifdef ESP_PLATFORM
-/* Mounts the board's data partition labelled "spiffs" (it holds LittleFS). */
+/* Mounts the board's data partition labelled "spiffs" (it holds LittleFS);
+ * true when it is mounted, also when it already was. */
 bool fw_assets_mount_partition(void);
 #endif
 

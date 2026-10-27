@@ -10,5 +10,5 @@ endif()
 idf_component_register(SRCS "fw_assets.c" "${lfs}/lfs.c" "${lfs}/lfs_util.c"
                        INCLUDE_DIRS "include"
                        PRIV_INCLUDE_DIRS "${lfs}"
-                       PRIV_REQUIRES spi_flash)
+                       PRIV_REQUIRES spi_flash freertos)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE LFS_READONLY LFS_NO_MALLOC LFS_NO_DEBUG)

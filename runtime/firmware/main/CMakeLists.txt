@@ -3,7 +3,7 @@ idf_component_register(
          "../../../shared/owner_ota.c" "../../../shared/owner_sha256.c"
          "../../../shared/owner_alias.c"
     INCLUDE_DIRS "."
-    EMBED_FILES "games_page.html" "dashboard.html" "icon.png" "icon.svg"
+    EMBED_FILES "games_page.html" "dashboard.html" "icon.png" "icon.svg" "preview.wasm"
     PRIV_INCLUDE_DIRS "../../../shared"
     PRIV_REQUIRES fw_settings fw_analytics fw_community fw_feed fw_sync fw_wifi fw_games fw_tls hub75 fw_text fw_screens fw_clock fw_flight fw_logo fw_assets nvs_flash efuse spi_flash esp_wifi esp_netif esp_event app_update esp_timer esp_http_server esp_https_server json lwip)
 

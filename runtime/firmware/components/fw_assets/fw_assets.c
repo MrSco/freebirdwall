@@ -3,6 +3,20 @@
 #include "lfs.h"
 #ifdef ESP_PLATFORM
 #include "esp_partition.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+/* littlefs is not thread-safe, and the display, the community worker and the
+ * dashboard's logo route all read logos: one caller at a time. The mutex is
+ * made before the scheduler starts (a constructor), so it always exists. */
+static StaticSemaphore_t s_lock_buf;
+static SemaphoreHandle_t s_lock;
+__attribute__((constructor)) static void make_lock(void){ s_lock = xSemaphoreCreateMutexStatic(&s_lock_buf); }
+#define LOCK() xSemaphoreTake(s_lock, portMAX_DELAY)
+#define UNLOCK() xSemaphoreGive(s_lock)
+#else
+#define LOCK() ((void)0)
+#define UNLOCK() ((void)0)
 #endif
 
 #define BLOCK 4096
@@ -26,7 +40,7 @@ static int bd_refuse(const struct lfs_config *c, lfs_block_t b, lfs_off_t o, con
 static int bd_refuse_erase(const struct lfs_config *c, lfs_block_t b){ (void)c; (void)b; return LFS_ERR_IO; }
 static int bd_sync(const struct lfs_config *c){ (void)c; return 0; }
 
-bool fw_assets_mount(FwAssetsRead read, void *ctx, uint32_t partition_bytes){
+static bool mount(FwAssetsRead read, void *ctx, uint32_t partition_bytes){
     if (s_mounted || !read || partition_bytes < BLOCK * 2) return false;
     s_read = read;
     s_read_ctx = ctx;
@@ -58,6 +72,14 @@ bool fw_assets_mount(FwAssetsRead read, void *ctx, uint32_t partition_bytes){
     return true;
 }
 
+bool fw_assets_mount(FwAssetsRead read, void *ctx, uint32_t partition_bytes){
+    bool ok;
+    LOCK();
+    ok = mount(read, ctx, partition_bytes);
+    UNLOCK();
+    return ok;
+}
+
 #ifdef ESP_PLATFORM
 static int partition_read(void *ctx, uint32_t offset, void *buf, uint32_t size){
     return esp_partition_read((const esp_partition_t *)ctx, offset, buf, size) == ESP_OK ? 0 : -1;
@@ -66,16 +88,24 @@ static int partition_read(void *ctx, uint32_t offset, void *buf, uint32_t size){
 bool fw_assets_mount_partition(void){
     const esp_partition_t *p = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
                                                         ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
-    return p && fw_assets_mount(partition_read, (void *)p, p->size);
+    bool ok;
+    LOCK();
+    ok = s_mounted || (p && mount(partition_read, (void *)p, p->size));
+    UNLOCK();
+    return ok;
 }
 #endif
 
 bool fw_assets_exists(const char *path){
     struct lfs_info info;
-    return s_mounted && path && lfs_stat(&s_lfs, path, &info) == 0 && info.type == LFS_TYPE_REG;
+    bool yes;
+    LOCK();
+    yes = s_mounted && path && lfs_stat(&s_lfs, path, &info) == 0 && info.type == LFS_TYPE_REG;
+    UNLOCK();
+    return yes;
 }
 
-int fw_assets_read_file(const char *path, uint8_t *buf, size_t cap){
+static int read_file(const char *path, uint8_t *buf, size_t cap){
     lfs_file_t f;
     struct lfs_file_config fc;
     lfs_soff_t size;
@@ -92,7 +122,17 @@ int fw_assets_read_file(const char *path, uint8_t *buf, size_t cap){
     return got == size ? (int)size : -1;
 }
 
+int fw_assets_read_file(const char *path, uint8_t *buf, size_t cap){
+    int n;
+    LOCK();
+    n = read_file(path, buf, cap);
+    UNLOCK();
+    return n;
+}
+
 void fw_assets_unmount(void){
+    LOCK();
     if (s_mounted) lfs_unmount(&s_lfs);
     s_mounted = false;
+    UNLOCK();
 }

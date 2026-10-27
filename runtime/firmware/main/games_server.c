@@ -12,6 +12,7 @@
 #include "esp_http_server.h"
 #include "esp_netif.h"
 #include "esp_timer.h"
+#include "esp_rom_crc.h"
 #include "fw_arcade.h"
 #include "memory_probe.h"
 #include "owned_settings.h"
@@ -27,6 +28,8 @@ extern const char games_page_start[] asm("_binary_games_page_html_start");
 extern const char games_page_end[] asm("_binary_games_page_html_end");
 extern const char dashboard_start[] asm("_binary_dashboard_html_start");
 extern const char dashboard_end[] asm("_binary_dashboard_html_end");
+extern const char preview_start[] asm("_binary_preview_wasm_start");
+extern const char preview_end[] asm("_binary_preview_wasm_end");
 extern const char icon_start[] asm("_binary_icon_png_start");
 extern const char icon_end[] asm("_binary_icon_png_end");
 
@@ -217,6 +220,25 @@ static esp_err_t icon_handler(httpd_req_t *req){
     return httpd_resp_send(req, icon_start, icon_end - icon_start);
 }
 
+/* The display preview (tools/build_preview.py, DASHBOARD.md "Preview"), about
+ * 130 KB from flash. Its ETag is the image's CRC, so a phone asks again each
+ * time but downloads it only after a firmware update. */
+static esp_err_t preview_handler(httpd_req_t *req){
+    static char etag[16];
+    char seen[16];
+    if (!etag[0])
+        snprintf(etag, sizeof etag, "\"%08x\"",
+                 (unsigned)esp_rom_crc32_le(0, (const uint8_t *)preview_start, preview_end - preview_start));
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "ETag", etag);
+    if (httpd_req_get_hdr_value_str(req, "If-None-Match", seen, sizeof seen) == ESP_OK && !strcmp(seen, etag)) {
+        httpd_resp_set_status(req, "304 Not Modified");
+        return httpd_resp_send(req, NULL, 0);
+    }
+    httpd_resp_set_type(req, "application/wasm");
+    return httpd_resp_send(req, preview_start, preview_end - preview_start);
+}
+
 static esp_err_t manifest_handler(httpd_req_t *req){
     httpd_resp_set_type(req, "application/manifest+json");
     httpd_resp_set_hdr(req, "Cache-Control", "max-age=86400");
@@ -290,6 +312,7 @@ bool fw_games_start(void){
         {.uri = "/play", .method = HTTP_GET, .handler = play_handler},
         {.uri = "/icon.png", .method = HTTP_GET, .handler = icon_handler},
         {.uri = "/manifest.webmanifest", .method = HTTP_GET, .handler = manifest_handler},
+        {.uri = "/preview.wasm", .method = HTTP_GET, .handler = preview_handler},
         {.uri = "/api/games", .method = HTTP_GET, .handler = api_get},
         {.uri = "/api/games", .method = HTTP_POST, .handler = api_post},
     };
@@ -300,7 +323,7 @@ bool fw_games_start(void){
     c.server_port = FW_GAMES_PORT;
     c.ctrl_port = 32772;
     c.max_open_sockets = MAX_CLIENTS + 1;
-    c.max_uri_handlers = 24;
+    c.max_uri_handlers = 32;
     c.stack_size = 6144;                      /* settings edits parse JSON */
     c.lru_purge_enable = true;
     if (httpd_start(&s_server, &c) != ESP_OK) {
