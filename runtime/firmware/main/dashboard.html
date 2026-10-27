@@ -54,8 +54,11 @@ nav button[aria-selected=true]{background:var(--accent);border-color:var(--accen
 .seg button[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent);font-weight:600}
 select,input[type=text],input[type=number],input[type=time]{width:100%;min-height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
 input:focus,select:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
-@media (max-width:360px){.two-col{grid-template-columns:1fr}}
+.two-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 12px}
+.two-col>*{min-width:0}
+/* iPhone Safari gives time fields a wide minimum width of their own: let them fit their column */
+input[type=time]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%}
+@media (max-width:360px){.two-col{grid-template-columns:minmax(0,1fr)}}
 .sw{position:relative;width:52px;height:30px;flex:none;display:block}
 .sw input{opacity:0;width:0;height:0;position:absolute}
 .sw span{position:absolute;inset:0;background:var(--knob);border-radius:30px;transition:.2s;cursor:pointer}
