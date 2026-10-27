@@ -116,6 +116,7 @@ keys. Each key given replaces the stored value; `null` removes it (not
 | `flight_source` | `vendor` (default) or `community` (FEED.md, "Community feed") |
 | `follow_app` | bool, default true: changes made in the FlightWall app reach the wall (below, "Changes made in the app") |
 | `scroll_speed` | `slow`, `normal` (default) or `fast`: how fast names too long for their line scroll (FLIGHT-SCREENS.md "Long text") |
+| `progress_bar` | bool, default false: a bar along the bottom of each flight card showing how far it is between its airports (FLIGHT-SCREENS.md "Progress bar") |
 | `tracking_source` | `community` (default) or `aeroapi`: where tracked flights' times come from on the community source (FEED.md, "Tracked flights on the community source") |
 
 A saved change reaches the wall at once: the feed rebuilds its request and

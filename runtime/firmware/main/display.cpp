@@ -402,6 +402,7 @@ void live_settings(){
     s_live_settings.anchors = s_live_anchors;
     s_live_settings.anchor_count = d->anchor_count;
     s_live_settings.alias = fw_aliases_lookup;          /* owned feature: airport aliases */
+    s_live_settings.progress = d->progress_bar;         /* owned: the route's progress along the bottom */
     s_live_frame.border = d->border;
     s_live_frame.border_percent = d->border_percent;
     s_live_frame.indicator = false;

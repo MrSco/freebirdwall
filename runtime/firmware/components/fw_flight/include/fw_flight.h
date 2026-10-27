@@ -68,6 +68,10 @@ typedef struct {
      * instead. NULL = no aliases. */
     bool (*alias)(void *ctx, const char *token, const char *value, char *out, size_t cap);
     void *alias_ctx;
+    /* Owned (owned_config.progress_bar, FLIGHT-SCREENS.md "Progress bar"):
+     * the ordinary card draws the tracked card's bar along the bottom when
+     * the flight's prog is known. */
+    bool progress;
 } FwFlightSettings;
 
 #define FW_FLIGHT_TEXT_MAX 128

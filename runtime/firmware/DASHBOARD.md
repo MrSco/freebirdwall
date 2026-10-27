@@ -83,13 +83,21 @@ firmware's second NVS write, next to saving Wi-Fi credentials in setup mode.
 - `GET /preview.wasm`: the preview (about 130 KB from flash), `no-cache` with
   the image's CRC as ETag, so it is downloaded again only after an update.
 - `GET /api/flights` (signed in): `{"state":n,"tracked":b,"overflow":n,
-  "flights":[...]}`, the feed's last good response (`fw_feed_copy`), each
-  flight with `FwFlight`'s fields by name, empty and unknown ones left out.
+  "flights":[...]}`, the feed's last good response, each flight with
+  `FwFlight`'s fields by name, empty and unknown ones left out (`prog` with the
+  progress bar's value). Copied one flight at a time (`fw_feed_flight`) and
+  sent in pieces through a 1 KiB buffer on the stack: no heap, since the page
+  asks every 20 s and the wall may be in the middle of a TLS request.
 - `GET /api/logo?al=<airline>&ac=<aircraft class>` (signed in): the PNG the
   wall would draw (`fw_logo_resolve` on the asset partition, LOGOS.md), cached
-  a day by the browser; 404 when there is none. The asset partition now takes
+  a day by the browser; 404 when there is none. It allocates the file's own
+  size (most logos are under 1 KB). The asset partition now takes
   a mutex on every call (`fw_assets.c`), since the display, the community
   worker and this route all read it.
+
+- `GET /api/memory` (signed in): `{"free","min_free","largest"}`, internal
+  RAM now, its low-water mark since start and the largest free block; the
+  Device tab shows it.
 
 The dashboard server has room for 32 routes (was 24).
 

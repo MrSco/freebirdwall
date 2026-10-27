@@ -1,5 +1,6 @@
 /* Community flights as the screens' flight list; see fw_community_frame.h. */
 #include "fw_community_frame.h"
+#include "fw_airports.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -87,7 +88,16 @@ void fw_community_flight(const flightwall::Flight &s, const flightwall::LogoCata
 void fw_community_frame(const flightwall::Batch &batch, const flightwall::LogoCatalog &logos, FwFeedFrame *out){
     std::memset(out, 0, sizeof *out);
     size_t n = batch.count < FW_FEED_MAX_FLIGHTS ? batch.count : FW_FEED_MAX_FLIGHTS;
-    for (size_t i = 0; i < n; ++i) fw_community_flight(batch.flights[i], logos, &out->flights[i]);
+    for (size_t i = 0; i < n; ++i) {
+        const flightwall::Flight &s = batch.flights[i];
+        FwFlight *f = &out->flights[i];
+        double olat, olon, dlat, dlon;
+        fw_community_flight(s, logos, f);
+        /* owned: the progress bar (FLIGHT-SCREENS.md), the airports from the flash table */
+        if (s.has_position && fw_airport_position(f->orig_icao, &olat, &olon) &&
+            fw_airport_position(f->dest_icao, &dlat, &dlon))
+            f->prog = fw_route_progress(olat, olon, dlat, dlon, s.latitude, s.longitude, f->gnd);
+    }
     out->count = (int)n;
     out->overflow = batch.count > n ? (int)(batch.count - n) : 0;
 }

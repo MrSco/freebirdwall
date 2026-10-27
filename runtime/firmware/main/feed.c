@@ -32,6 +32,9 @@
 #include "stats.h"
 #include "app_settings.h"
 #include "sync_store.h"
+#include "position_fix.h"
+#include "fw_airports.h"
+#include <strings.h>
 #include <time.h>
 
 #define HOST "api.theflightwall.com"
@@ -55,6 +58,18 @@ static bool s_has_key;
 static FwFlightSource s_source;
 static bool s_follow = true;            /* owned_config.follow_app */
 static char s_sync_flight[16];          /* the Sync leg asked for as a tracked flight, "" none */
+
+/* Owned: the progress bar on the FlightWall feed (FLIGHT-SCREENS.md
+ * "Progress bar"), which sends no positions: the shown flights' positions from
+ * adsb.fi by ICAO address (position_fix.h), at most one lookup per poll, for
+ * the flight whose position is oldest, each flight at most every 50 s, and
+ * only when both its airports are in the airport table. A position counts for
+ * 3 minutes. Static, five slots: no heap. */
+#define FIX_EVERY_MS 50000
+#define FIX_VALID_MS 180000
+typedef struct { char hex[8]; float lat, lon; bool ground, ok; uint32_t at; } Fix;
+static Fix s_fix[FW_FEED_MAX_FLIGHTS];
+static unsigned s_fixes, s_fix_fails;
 
 FwFeedState fw_feed_state(void){ return s_state; }
 uint32_t fw_feed_display_serial(void){ return s_display_serial; }
@@ -80,7 +95,99 @@ uint32_t fw_feed_copy(FwFeedFrame *out){
     return serial;
 }
 
+bool fw_feed_flight(int i, FwFlight *out, int *count, bool *tracked, int *overflow){
+    bool ok;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    ok = i >= 0 && i < s_frame.count;
+    if (ok) memcpy(out, &s_frame.flights[i], sizeof *out);
+    if (count) *count = s_frame.count;
+    if (tracked) *tracked = s_frame.tracked;
+    if (overflow) *overflow = s_frame.overflow;
+    xSemaphoreGive(s_lock);
+    return ok;
+}
+
 static uint32_t now_ms(void){ return (uint32_t)(esp_timer_get_time() / 1000); }
+
+static Fix *fix_for(const char *hex){
+    if (strlen(hex) != 6) return NULL;
+    for (int i = 0; i < FW_FEED_MAX_FLIGHTS; ++i)
+        if (s_fix[i].hex[0] && !strcasecmp(s_fix[i].hex, hex)) return &s_fix[i];
+    return NULL;
+}
+
+static bool route_known(const FwFlight *f, double *olat, double *olon, double *dlat, double *dlon){
+    return fw_airport_position(f->orig_icao, olat, olon) && fw_airport_position(f->dest_icao, dlat, dlon);
+}
+
+/* The FlightWall list's progress from the fresh positions; s_lock held. */
+static void apply_progress(FwFeedFrame *fr){
+    uint32_t now = now_ms();
+    if (!s_display.progress_bar || fr->tracked) return;      /* tracked flights bring their own */
+    for (int i = 0; i < fr->count; ++i) {
+        FwFlight *f = &fr->flights[i];
+        const Fix *x = fix_for(f->icao);
+        double olat, olon, dlat, dlon;
+        if (x && x->ok && now - x->at < FIX_VALID_MS && route_known(f, &olat, &olon, &dlat, &dlon))
+            f->prog = fw_route_progress(olat, olon, dlat, dlon, x->lat, x->lon, x->ground || f->gnd);
+    }
+}
+
+/* One position lookup for the progress bar, when one is due. */
+static void fix_step(void){
+    char hex[8] = "";
+    uint32_t now = now_ms(), oldest = 0;
+    double lat, lon, a, b, c, d;
+    bool ground;
+    unsigned status;
+    int rc;
+    Fix *slot = NULL;
+    if (s_source != FW_SOURCE_VENDOR || !s_display.progress_bar) return;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    for (int i = 0; i < s_frame.count && !s_frame.tracked; ++i) {
+        const FwFlight *f = &s_frame.flights[i];
+        const Fix *x = fix_for(f->icao);
+        uint32_t age = x ? now - x->at : UINT32_MAX;
+        if (strlen(f->icao) == 6 && age >= FIX_EVERY_MS && age > oldest && route_known(f, &a, &b, &c, &d)) {
+            oldest = age;
+            snprintf(hex, sizeof hex, "%s", f->icao);
+        }
+    }
+    xSemaphoreGive(s_lock);
+    if (!hex[0]) return;
+    for (int i = 0; i < 6; ++i) hex[i] = (char)(hex[i] >= 'A' && hex[i] <= 'F' ? hex[i] + 32 : hex[i]);
+    rc = fw_position_fix(hex, &lat, &lon, &ground, &status);
+    /* its own slot, else one no shown flight uses, else the oldest */
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (!(slot = fix_for(hex))) {
+        for (int i = 0; i < FW_FEED_MAX_FLIGHTS && !slot; ++i) {
+            bool used = false;
+            for (int k = 0; k < s_frame.count; ++k) used |= s_fix[i].hex[0] && !strcasecmp(s_fix[i].hex, s_frame.flights[k].icao);
+            if (!used) slot = &s_fix[i];
+        }
+        if (!slot) {
+            slot = &s_fix[0];
+            for (int i = 1; i < FW_FEED_MAX_FLIGHTS; ++i) if (s_fix[i].at < slot->at) slot = &s_fix[i];
+        }
+    }
+    snprintf(slot->hex, sizeof slot->hex, "%s", hex);
+    slot->at = now_ms();
+    slot->ok = rc == 0;
+    if (!rc) {
+        slot->lat = (float)lat;
+        slot->lon = (float)lon;
+        slot->ground = ground;
+        apply_progress(&s_frame);
+        ++s_serial;
+    }
+    xSemaphoreGive(s_lock);
+    if (rc) ++s_fix_fails;
+    if (++s_fixes <= 3 || s_fixes % 50 == 0 || (rc && rc != 11)) {
+        char extra[96];
+        snprintf(extra, sizeof extra, "\"n\":%u,\"rc\":%d,\"status\":%u,\"fails\":%u", s_fixes, rc, status, s_fix_fails);
+        fw_mem_report("progress_fix", extra);              /* counts only: no positions or callsigns */
+    }
+}
 
 /* NVS api/key, read-only. */
 static bool load_key(char *key, size_t key_cap){
@@ -159,6 +266,7 @@ static int poll_once(int *status, size_t *bytes){
     if (fw_feed_parse(s_body, r.body_len, &s_parse) != FW_FEED_OK) { stage = 6; goto done; }
     xSemaphoreTake(s_lock, portMAX_DELAY);
     memcpy(&s_frame, &s_parse, sizeof s_frame);
+    apply_progress(&s_frame);
     ++s_serial;
     xSemaphoreGive(s_lock);
     s_state = FW_FEED_LIVE;
@@ -276,6 +384,11 @@ static void feed_task(void *arg){
                      !stage && s_parse.tracked ? "true" : "false", stage ? 0 : s_parse.overflow,
                      (unsigned)(now_ms() - t0), s_fails);
             fw_mem_report("feed_poll", extra);
+        }
+        if (!stage) {
+            uint32_t t1 = now_ms();
+            fix_step();                                    /* the progress bar's positions, between polls */
+            t0 += now_ms() - t1;
         }
         wait = POLL_MS;
         if (s_streak >= 3) wait = s_streak >= 5 ? 60000 : s_streak == 4 ? 40000 : 20000;

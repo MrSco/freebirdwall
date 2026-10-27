@@ -125,6 +125,41 @@ keep stock's 18 + `...`):
 Tests: `tests/test_flight.c` (names), `tests/test_scroll.c` (timing, clipping,
 redraws only inside the box).
 
+## Progress bar (owned)
+
+`owned_config.progress_bar` (off by default) draws the tracked card's bar
+(`fw_screen_progress`: grey, green up to the progress, the row second from the
+bottom, below `footer2`) on the ordinary card too, when the flight's `prog` is
+known. The card is otherwise unchanged; tracked flights keep their own bar.
+
+`prog` for an ordinary flight is `fw_route_progress` (components/fw_airports):
+the great-circle distance from the origin to the aircraft over that distance
+plus the distance left, as the tracked card works it out. On the ground within
+10 km of an airport it is 0 or 100. None when the airports are closer than
+50 km, or when distance flown plus distance left is more than 1.5 times the
+route (a wrong or stale route: no misleading bar). The airports come from the
+airport table, `components/fw_airports` (OurAirports, public domain;
+`tools/make_airports.py`): every large, medium and small airport with a
+four-letter code, indexed by each of its codes (KPBI and KDJT both find Palm
+Beach), 19,584 codes in 196 KB of flash, 10 bytes each, no RAM.
+
+Where the aircraft position comes from:
+
+- **Community source:** the adsb.fi position the flight already has, with the
+  airports of its adsbdb route (`fw_community_frame`). Nothing more is asked.
+- **FlightWall source,** which sends no positions: the shown flights' positions
+  from adsb.fi by ICAO address (`/api/v2/hex/<hex>`, `main/position_fix.cpp`),
+  only while the option is on: at most one lookup per FlightWall poll (10 s),
+  for the flight whose position is oldest, each flight at most every 50 s, and
+  only when both its airports are in the table. A position counts for
+  3 minutes. The lookup runs on the feed task between polls (one TLS
+  connection at a time, the shared block as arena) and reads the answer byte
+  by byte: no JSON document, five 24-byte static slots, no heap. The log has
+  counts only (`progress_fix`).
+
+Memory, measured on the board (below, "Progress bar on the board"): static RAM
++160 bytes; no heap.
+
 ## Drawing an element — `FUN_420097a4` (ordinary), `FUN_4200bc94` (tracked)
 
 - Text is white (`0xFFFF`) whatever the layout colour; opaque 6×8 cells.
@@ -229,6 +264,26 @@ object) has no direct writer in the decompile; the owner's tracked-flight
 Not yet built: parsing live feed rows into `FwFlight`, the PLUS sync and
 upcoming screens, and stock's per-element incremental redraw (the owned
 screens redraw whole frames, which ends in the same picture).
+
+## Progress bar on the board — 2026-10-26
+
+Build `owned-skeleton-v1-2bd03104282b`. Static RAM 144,537 -> 144,697 bytes
+(+160: the five position slots); flash +200 KB (the airport table, 196 KB).
+Measured with `/api/memory` every 5 s while `/api/flights` was asked every
+3 s, seven times the dashboard's rate, with logos:
+
+- **Community source, bar on,** 8 minutes: no errors; 491 of 641 listed flights
+  had a bar (many 0 or 100: the areas are near airports). Lowest free RAM since
+  start 21,620 bytes, through two FlightWall-app settings checks (the previous
+  firmware's low, 10,984, came from that check, with the old `/api/flights`
+  building its answer in RAM); largest free block at least 11,776.
+- **FlightWall source, bar on,** switched at run time with the community
+  module still allocated (a worst case: it is never freed), 6 minutes: no
+  errors; free RAM never under 32,260; the low-water mark did not move
+  (20,220). The adsb.fi lookups answered (`progress_fix` rc 0, 200). Only 120
+  of 560 listed flights had a bar; why the others had none (no route in the
+  feed, an airport not in the table, adsb.fi not seeing them) is not yet known.
+- Switching back to community set the lowest point of the run: 19,704 bytes.
 
 ## On the board — verified 2026-10-19
 

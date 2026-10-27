@@ -196,6 +196,7 @@ EXPORT(pv_settings) void pv_settings(const char *json){
     s_st.anchors = s_anchors;
     s_st.anchor_count = d->anchor_count;
     s_st.alias = alias_lookup;
+    s_st.progress = d->progress_bar;
     s_frame.border = d->border;
     s_frame.border_percent = d->border_percent;
     s_frame.indicator = false;

@@ -15,7 +15,7 @@ idf_component_register(
          "${runtime}/src/community_cache.cpp"
          "${runtime}/esp32/stream_adsb.cpp"
     INCLUDE_DIRS "include" "${runtime}/src" "${runtime}/esp32"
-    REQUIRES fw_feed fw_flight)
+    REQUIRES fw_feed fw_flight fw_airports)
 
 # Eight records per list (the reader's staging, the cache, the shown list):
 # five on screen plus spares for filtering, about 3.7 KiB each instead of the

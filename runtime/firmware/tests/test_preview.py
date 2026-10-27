@@ -119,6 +119,12 @@ def scenarios():
     run_steps(fresh, 2501, 9001)
     fresh.append({'dump': 'refresh_1'})
     out['refresh'] = fresh
+    # the progress bar (owned_config.progress_bar): on the bottom row, only when on and known
+    prog = {'flights': {'flights': [dict(f, prog=p) for f, p in zip(FLIGHTS, (38, 100, float('nan')))], 'overflow': 0}}
+    prog['flights']['flights'][2].pop('prog')
+    scene('progress', settings(owned={'progress_bar': True}, flight_display_speed='fast'), prog, *logos,
+          until=30000, dumps=tuple(range(0, 30000, 1500)))
+    scene('progress_off', settings(flight_display_speed='fast'), prog, *logos, dumps=(0,))
     return out
 
 
@@ -143,6 +149,7 @@ def main():
     a = ap.parse_args()
     node = shutil.which('node') or sys.exit('Node.js is required')
     checks = 0
+    bars = set()
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         if build_preview.find_zig(a.zig):
@@ -174,10 +181,20 @@ def main():
                     sys.exit('FAIL %s: %d pixels differ' % (dump, diff))
                 if not any(hb[i] or hb[i + 1] or hb[i + 2] for i in range(0, len(hb), 4)) and 'blank' not in dump:
                     sys.exit('FAIL %s: nothing drawn' % dump)
+                if dump.startswith('progress'):
+                    row = [tuple(hb[(62 * 128 + x) * 4:(62 * 128 + x) * 4 + 3]) for x in range(128)]
+                    green = sum(1 for c in row if c == (0, 255, 0))
+                    grey = sum(1 for c in row if c == (66, 65, 66))
+                    if (green or grey) and green + grey != 124 or dump.startswith('progress_off') and (green or grey):
+                        sys.exit('FAIL %s: bottom row %d green, %d grey' % (dump, green, grey))
+                    bars.add(green if green or grey else None)
+                    checks += 1
                 checks += 1
                 if a.keep:
                     a.keep.mkdir(parents=True, exist_ok=True)
                     led_png(hb, a.keep / (dump + '.png'))
+    if bars != {47, 124, None}:                     # 38 % and 100 % of 124 pixels, and a flight with no bar
+        sys.exit('FAIL progress: bars seen %r' % sorted(bars, key=str))
     print('PASS: %d preview checks (WebAssembly and desktop frames identical%s)' % (
         checks, '' if (FIXTURES / 'AAL.png').exists() else '; no logo fixtures, logos left out'))
 

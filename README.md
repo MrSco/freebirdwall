@@ -97,6 +97,9 @@ sign in up to four browsers this way.
 code: change the layout, the title, the units or an airport's name and the picture changes at once, with your wall's
 flights (or sample ones when none are nearby).
 
+**Progress bars.** Turn on **Progress bar** under Display and each flight shows how far it is between its airports, like
+tracked flights do.
+
 **Areas on a map.** Your areas show as circles on a map. Search for a place or tap the map to put an area there, drag its
 pin to move it, and set its size with the slider. No more typing coordinates (you still can, under **Coordinates**).
 

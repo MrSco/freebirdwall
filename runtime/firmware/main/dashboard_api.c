@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdarg.h>
 #include <string.h>
 #include <time.h>
 #include "esp_random.h"
@@ -421,56 +422,77 @@ static esp_err_t aliases_put(httpd_req_t *req){
 
 /* ------------------------------------------------------------ the display preview */
 
-static void add_str(cJSON *o, const char *k, const char *v){ if (v[0]) cJSON_AddStringToObject(o, k, v); }
-static void add_num(cJSON *o, const char *k, double v){ if (!isnan(v)) cJSON_AddNumberToObject(o, k, v); }
-static void add_flag(cJSON *o, const char *k, bool v){ if (v) cJSON_AddTrueToObject(o, k); }
+/* JSON pieces into a fixed buffer (j->at stops growing once it is full). */
+typedef struct { char buf[1024]; size_t at; } Json;
+static void put(Json *j, const char *fmt, ...){
+    va_list ap;
+    int n;
+    if (j->at >= sizeof j->buf) return;
+    va_start(ap, fmt);
+    n = vsnprintf(j->buf + j->at, sizeof j->buf - j->at, fmt, ap);
+    va_end(ap);
+    j->at = n < 0 ? sizeof j->buf : j->at + (size_t)n;
+}
+static void put_str(Json *j, const char *k, const char *v){
+    if (!v[0]) return;
+    put(j, ",\"%s\":\"", k);
+    for (; *v && j->at + 8 < sizeof j->buf; ++v) {
+        unsigned char c = (unsigned char)*v;
+        if (c == '"' || c == '\\') put(j, "\\%c", c);
+        else if (c < 0x20) put(j, "\\u%04x", c);
+        else j->buf[j->at++] = (char)c;
+    }
+    put(j, "\"");
+}
+static void put_num(Json *j, const char *k, double v){ if (!isnan(v) && !isinf(v)) put(j, ",\"%s\":%.6g", k, v); }
+static void put_flag(Json *j, const char *k, bool v){ if (v) put(j, ",\"%s\":true", k); }
 
 /* The flights the wall has now, for the dashboard's preview (DASHBOARD.md
  * "Preview"): {"state":n,"tracked":b,"overflow":n,"flights":[{FwFlight's
- * fields by name; empty and unknown ones left out}]}. */
+ * fields by name; empty and unknown ones left out}]}. One flight at a time
+ * through a 1 KiB buffer on the stack, sent in pieces: no heap, since the
+ * page asks every 20 s while the wall may be in the middle of a TLS request. */
 static esp_err_t flights_get(httpd_req_t *req){
-    FwFeedFrame *fr;
-    cJSON *root, *list;
-    char *out;
-    esp_err_t r;
+    FwFlight f;
+    Json j;
+    int count = 0, overflow = 0;
+    bool tracked = false;
     if (!gate(req)) return ESP_OK;
-    if (!(fr = malloc(sizeof *fr))) return error(req, "500 Internal Server Error", "out of memory");
-    fw_feed_copy(fr);
-    root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "state", (int)fw_feed_state());
-    cJSON_AddBoolToObject(root, "tracked", fr->tracked);
-    cJSON_AddNumberToObject(root, "overflow", fr->overflow);
-    list = cJSON_AddArrayToObject(root, "flights");
-    for (int i = 0; i < fr->count && list; ++i) {
-        const FwFlight *f = &fr->flights[i];
-        cJSON *o = cJSON_CreateObject();
-        char sts[2] = {f->sts, 0};
-        if (!o) break;
-        add_str(o, "icao", f->icao); add_str(o, "cs", f->cs); add_str(o, "reg", f->reg);
-        add_num(o, "alt_b", f->alt_b); add_num(o, "alt_g", f->alt_g); add_num(o, "vel", f->vel);
-        add_num(o, "trk", f->trk); add_num(o, "vr", f->vr); add_flag(o, "gnd", f->gnd);
-        add_str(o, "sqk", f->sqk);
-        add_str(o, "orig_icao", f->orig_icao); add_str(o, "orig_iata", f->orig_iata);
-        add_str(o, "dest_icao", f->dest_icao); add_str(o, "dest_iata", f->dest_iata);
-        add_str(o, "orig", f->orig); add_str(o, "dest", f->dest);
-        add_str(o, "al_code", f->al_code); add_str(o, "al_paint", f->al_paint); add_str(o, "al_op", f->al_op);
-        add_str(o, "al_name", f->al_name);
-        add_str(o, "ac_type", f->ac_type); add_str(o, "ac_name", f->ac_name); add_str(o, "ac_class", f->ac_class);
-        add_flag(o, "has_trk", f->has_trk); add_str(o, "sts", sts);
-        if (f->sexp) cJSON_AddNumberToObject(o, "sexp", (double)f->sexp);
-        add_num(o, "prog", f->prog); add_num(o, "dist", f->dist);
-        add_str(o, "conf", f->conf); add_str(o, "dep", f->dep); add_str(o, "arr", f->arr);
-        add_str(o, "over", f->over); add_str(o, "tft", f->tft);
-        add_flag(o, "trk_gnd", f->trk_gnd); add_flag(o, "trk_metrics", f->trk_metrics);
-        cJSON_AddItemToArray(list, o);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    for (int i = 0; ; ++i) {
+        bool have = fw_feed_flight(i, &f, &count, &tracked, &overflow);
+        j.at = 0;
+        if (i == 0) put(&j, "{\"state\":%d,\"tracked\":%s,\"overflow\":%d,\"flights\":[", (int)fw_feed_state(),
+                        tracked ? "true" : "false", overflow);
+        if (have) {
+            char sts[2] = {f.sts, 0};
+            put(&j, "%s{\"i\":%d", i ? "," : "", i);
+            put_str(&j, "icao", f.icao); put_str(&j, "cs", f.cs); put_str(&j, "reg", f.reg);
+            put_num(&j, "alt_b", f.alt_b); put_num(&j, "alt_g", f.alt_g); put_num(&j, "vel", f.vel);
+            put_num(&j, "trk", f.trk); put_num(&j, "vr", f.vr); put_flag(&j, "gnd", f.gnd);
+            put_str(&j, "sqk", f.sqk);
+            put_str(&j, "orig_icao", f.orig_icao); put_str(&j, "orig_iata", f.orig_iata);
+            put_str(&j, "dest_icao", f.dest_icao); put_str(&j, "dest_iata", f.dest_iata);
+            put_str(&j, "orig", f.orig); put_str(&j, "dest", f.dest);
+            put_str(&j, "al_code", f.al_code); put_str(&j, "al_paint", f.al_paint); put_str(&j, "al_op", f.al_op);
+            put_str(&j, "al_name", f.al_name);
+            put_str(&j, "ac_type", f.ac_type); put_str(&j, "ac_name", f.ac_name); put_str(&j, "ac_class", f.ac_class);
+            put_flag(&j, "has_trk", f.has_trk); put_str(&j, "sts", sts);
+            if (f.sexp) put(&j, ",\"sexp\":%lld", (long long)f.sexp);
+            put_num(&j, "prog", f.prog); put_num(&j, "dist", f.dist);
+            put_str(&j, "conf", f.conf); put_str(&j, "dep", f.dep); put_str(&j, "arr", f.arr);
+            put_str(&j, "over", f.over); put_str(&j, "tft", f.tft);
+            put_flag(&j, "trk_gnd", f.trk_gnd); put_flag(&j, "trk_metrics", f.trk_metrics);
+            put(&j, "}");
+        } else {
+            put(&j, "]}");
+        }
+        if (j.at >= sizeof j.buf) return httpd_resp_send_chunk(req, NULL, 0);   /* cannot happen: ~600 bytes a flight */
+        if (httpd_resp_send_chunk(req, j.buf, (ssize_t)j.at) != ESP_OK) return ESP_FAIL;
+        if (!have) break;
     }
-    free(fr);
-    out = root ? cJSON_PrintUnformatted(root) : NULL;
-    cJSON_Delete(root);
-    if (!out) return error(req, "500 Internal Server Error", "out of memory");
-    r = reply(req, "200 OK", out);
-    cJSON_free(out);
-    return r;
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 /* %XX and + in a query value, in place. */
@@ -508,14 +530,27 @@ static esp_err_t logo_get(httpd_req_t *req){
     if (!fw_assets_mount_partition()) return error(req, "404 Not Found", "no logos");
     path = fw_logo_resolve(al, ac, logo_exists, NULL, path_buf, sizeof path_buf);
     if (!path) return error(req, "404 Not Found", "no logo");
-    if (!(buf = malloc(4096))) return error(req, "500 Internal Server Error", "out of memory");
-    n = fw_assets_read_file(path, buf, 4096);       /* the largest logo is 2,907 bytes */
+    n = fw_assets_file_size(path);                  /* most logos are under 1 KB, the largest 2,907 bytes */
+    if (n <= 0 || n > 8192) return error(req, "404 Not Found", "no logo");
+    if (!(buf = malloc((size_t)n))) return error(req, "503 Service Unavailable", "busy; try again");
+    n = fw_assets_read_file(path, buf, (size_t)n);
     if (n <= 0) { free(buf); return error(req, "404 Not Found", "no logo"); }
     httpd_resp_set_type(req, "image/png");
     httpd_resp_set_hdr(req, "Cache-Control", "private, max-age=86400");
     r = httpd_resp_send(req, (const char *)buf, n);
     free(buf);
     return r;
+}
+
+/* The wall's memory now (memory_probe.h), for the dashboard's Device tab. */
+static esp_err_t memory_get(httpd_req_t *req){
+    FwMemSnapshot m;
+    char body[120];
+    if (!gate(req)) return ESP_OK;
+    fw_mem_snapshot(&m);
+    snprintf(body, sizeof body, "{\"free\":%u,\"min_free\":%u,\"largest\":%u}", (unsigned)m.free_internal,
+             (unsigned)m.min_free_internal, (unsigned)m.largest_internal);
+    return reply(req, "200 OK", body);
 }
 
 void fw_dashboard_api_register(httpd_handle_t h){
@@ -537,6 +572,7 @@ void fw_dashboard_api_register(httpd_handle_t h){
         {.uri = "/api/tracking", .method = HTTP_PUT, .handler = tracking_put},
         {.uri = "/api/flights", .method = HTTP_GET, .handler = flights_get},
         {.uri = "/api/logo", .method = HTTP_GET, .handler = logo_get},
+        {.uri = "/api/memory", .method = HTTP_GET, .handler = memory_get},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(h, &routes[i]);
 }

@@ -3,6 +3,11 @@
 FreeBirdWall itself is MIT-licensed (LICENSE). The firmware and the installer page include the following
 third-party software, each under its own licence.
 
+## OurAirports airport data
+
+The firmware's airport locations (`runtime/firmware/components/fw_airports/airports_table.c`) are made from
+[OurAirports](https://ourairports.com/data/), which is released into the public domain.
+
 ## ESP-IDF v4.4.7 (Espressif Systems)
 
 Licence: Apache-2.0. The firmware is built with it and includes its components.

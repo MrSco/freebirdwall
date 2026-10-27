@@ -105,6 +105,15 @@ bool fw_assets_exists(const char *path){
     return yes;
 }
 
+int fw_assets_file_size(const char *path){
+    struct lfs_info info;
+    int n = -1;
+    LOCK();
+    if (s_mounted && path && lfs_stat(&s_lfs, path, &info) == 0 && info.type == LFS_TYPE_REG) n = (int)info.size;
+    UNLOCK();
+    return n;
+}
+
 static int read_file(const char *path, uint8_t *buf, size_t cap){
     lfs_file_t f;
     struct lfs_file_config fc;

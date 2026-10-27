@@ -56,11 +56,11 @@ FLIGHTS = {'state': 3, 'tracked': False, 'overflow': 0, 'flights': [
     {'icao': 'a8b1c2', 'cs': 'JBU1023', 'reg': 'N968JT', 'al_code': 'JBU', 'al_name': 'JetBlue Airways',
      'orig_iata': 'JFK', 'dest_iata': 'SJU', 'orig_icao': 'KJFK', 'dest_icao': 'TJSJ', 'orig': 'John F Kennedy Intl',
      'dest': 'Luis Munoz Marin Intl', 'ac_type': 'A321', 'ac_name': 'A321neo', 'alt_b': 2286, 'vel': 128, 'trk': 135,
-     'vr': 9},
+     'vr': 9, 'prog': 3},
     {'icao': 'a3d4e5', 'cs': 'DAL1311', 'reg': 'N813DN', 'al_code': 'DAL', 'al_name': 'Delta Air Lines',
      'orig_iata': 'ATL', 'dest_iata': 'JFK', 'orig_icao': 'KATL', 'dest_icao': 'KJFK',
      'orig': 'Hartsfield-Jackson Atlanta Intl', 'dest': 'John F Kennedy Intl', 'ac_type': 'B739', 'ac_name': '737-900',
-     'alt_b': 1067, 'vel': 82, 'trk': 40, 'vr': -4}]}
+     'alt_b': 1067, 'vel': 82, 'trk': 40, 'vr': -4, 'prog': 98}]}
 
 
 def stats():
@@ -133,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, b'--- boot 1, reset reason 1 ---\nFWSTATE {"board_ok":true}\n', 'text/plain')
         if path == '/api/flights':
             return self.send(200, FLIGHTS)
+        if path == '/api/memory':
+            return self.send(200, {'free': 35844, 'min_free': 10984, 'largest': 14848})
         if path == '/api/logo':                 # the airline's own logo only (the wall also has category ones)
             al = ''.join(c for c in self.path.partition('al=')[2].split('&')[0] if c.isalnum())
             logo = LOGOS / (al + '.png')

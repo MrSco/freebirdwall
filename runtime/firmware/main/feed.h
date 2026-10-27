@@ -37,6 +37,11 @@ uint32_t fw_feed_serial(void);
 /* Copies the latest good response; returns its serial. */
 uint32_t fw_feed_copy(FwFeedFrame *out);
 
+/* One flight of the latest good response, copied under the lock, so a reader
+ * (the dashboard's preview) needs no whole frame. False past the last one;
+ * count, tracked and overflow (any may be NULL) describe the response. */
+bool fw_feed_flight(int i, FwFlight *out, int *count, bool *tracked, int *overflow);
+
 #ifdef __cplusplus
 }
 #endif

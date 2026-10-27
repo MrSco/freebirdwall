@@ -76,6 +76,12 @@ wall finds them itself (`main/community.cpp`, "tracked flights"):
   The "Flying over" page is skipped (no place names on this source).
 - Logged as `tracked_lookup` (counts and HTTP status only).
 
+## Progress bar positions on the FlightWall feed (owned)
+
+With `owned_config.progress_bar` on, the vendor source also asks adsb.fi for
+the positions of the flights on screen, by ICAO address, one request per poll
+at most (FLIGHT-SCREENS.md "Progress bar"). Off, nothing is asked.
+
 ## Community feed (owned)
 
 A second source the vendor firmware does not have: aircraft positions from

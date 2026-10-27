@@ -18,6 +18,12 @@ PNGDEC_DEFINES = ['-D__LINUX__=1', '-Duint=unsigned', '-DPNG_MAX_BUFFERED_PIXELS
 # cJSON as ESP-IDF ships it (components/json), for the saved-network list.
 CJSON = Path(os.environ.get('IDF_PATH') or Path.home() / 'esp' / 'esp-idf-v4.4.7') / 'components' / 'json' / 'cJSON'
 TESTS = {
+    'test_airports': {
+        'sources': [HERE / 'test_airports.c',
+                    FIRMWARE / 'components/fw_airports/fw_airports.c',
+                    FIRMWARE / 'components/fw_airports/airports_table.c'],
+        'includes': [FIRMWARE / 'components/fw_airports/include'],
+    },
     'test_text': {
         'sources': [HERE / 'test_text.c',
                     FIRMWARE / 'components/fw_text/fw_text.c',

@@ -38,9 +38,11 @@ def build(tmp):
                                 FW / 'components/fw_sync/include', FW / 'components/fw_text/include',
                                 FW / 'components/fw_screens/include', FW / 'components/fw_logo/include',
                                 FW / 'components/qrcode/include', RUNTIME / 'build/deps/qrcode/src',
+                                FW / 'components/fw_airports/include',
                                 RUNTIME / 'build/deps/pngdec/src')]
     objs = []
-    for c in ('fw_flight/fw_flight.c', 'fw_text/fw_text.c', 'fw_text/font5x7.c', 'fw_text/vendor_charmap.c'):
+    for c in ('fw_flight/fw_flight.c', 'fw_text/fw_text.c', 'fw_text/font5x7.c', 'fw_text/vendor_charmap.c',
+              'fw_airports/fw_airports.c', 'fw_airports/airports_table.c'):
         obj = Path(tmp) / (Path(c).stem + '.o')
         r = subprocess.run([gcc, '-std=gnu11', '-O1', '-w', '-c', *inc, str(FW / 'components' / c), '-o', str(obj)],
                            capture_output=True, text=True)
@@ -85,13 +87,25 @@ ROUTE = {'response': {'flightroute': {
                     'municipality': 'New York', 'name': 'John F Kennedy International Airport'}}}}
 
 
+def progress(olat, olon, dlat, dlon, lat, lon):
+    """fw_route_progress in the air, worked out independently."""
+    from math import asin, cos, radians, sin, sqrt
+
+    def d(a, b, c, e):
+        h = sin(radians(c - a) / 2) ** 2 + cos(radians(a)) * cos(radians(c)) * sin(radians(e - b) / 2) ** 2
+        return 2 * 6371008.8 * asin(sqrt(h))
+    flown, left = d(olat, olon, lat, lon), d(lat, lon, dlat, dlon)
+    return 100 * flown / (flown + left)
+
+
 def near(a, b, tol=0.01):
     return a is not None and abs(a - b) <= tol
 
 
 def test_frame(exe, tmp):
     rows = [aircraft(),
-            aircraft(hex='b00001', flight='BAW117  ', r='G-STBA', t='B77W', desc='BOEING 777-300ER', category='A5'),
+            aircraft(hex='b00001', flight='BAW117  ', r='G-STBA', t='B77W', desc='BOEING 777-300ER', category='A5',
+                     lat=52.0, lon=-35.0),
             aircraft(hex='b00002', flight='N911HL  ', r='N911HL', t='EC35', desc='EUROCOPTER EC-135', category='A7',
                      alt_baro=1200, gs=110.0, baro_rate=0),
             aircraft(hex='b00003', flight='OPS1    ', r='', t='SERV', desc=None, category='C2', alt_baro='ground',
@@ -124,6 +138,15 @@ def test_frame(exe, tmp):
     check(g['gnd'] and g['alt_b'] is None and near(g['vel'], 6.79, 0.01) and g['vr'] is None and g['ac_name'] == '',
           'frame: on the ground %r' % g)
     check(p['al_code'] == '' and p['ac_name'] == 'Cessna 172 Skyhawk', 'frame: private aircraft %r' % p)
+    # the progress bar: Heathrow (EGLL) to JFK (KJFK) from the airport table, the aircraft mid-Atlantic
+    want = progress(51.4708, -0.4599, 40.6394, -73.7793, 52.0, -35.0)
+    check(b['prog'] is not None and near(b['prog'], want, 0.05) and not b['has_trk'],
+          'frame: route progress %r, want %.2f' % (b['prog'], want))
+    rows[1]['lat'], rows[1]['lon'] = 26.7, -80.1            # Florida: far off the London - New York route
+    pos.write_text(json.dumps({'ac': rows[:2]}))
+    f = run(exe, 'frame', pos, route, 'BAW117')
+    check(f['flights'][1]['orig_icao'] == 'EGLL' and f['flights'][1]['prog'] is None, 'frame: off the route, no progress')
+    rows[1]['lat'], rows[1]['lon'] = 52.0, -35.0
 
     # fewer than five: no overflow; empty list
     pos.write_text(json.dumps({'ac': rows[:2]}))

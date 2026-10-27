@@ -251,7 +251,11 @@ function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_ti
   seg(P+'layout_template',[['DEFAULT','Logo'],['NO_LOGO','No logo'],['TECHNICAL','Technical']],'DEFAULT','Layout','Technical shows altitude, speed and heading')+
   seg(P+'flight_display_speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],'normal','Time on each flight')+
   seg(P+'max_flights_behavior',[['text','Count screen'],['indicator_led','Corner light'],['off','Nothing']],'text','More than five flights')+
-  seg(P+'loading_template',[['TEXT','Text'],['CLOCK','Clock'],['ELLIPSIS','Dots'],['BLANK','Blank']],'TEXT','No flights nearby'))+
+  seg(P+'loading_template',[['TEXT','Text'],['CLOCK','Clock'],['ELLIPSIS','Dots'],['BLANK','Blank']],'TEXT','No flights nearby')+
+  sw('owned_config.progress_bar',false,'Progress bar','How far each flight is between its airports, along the bottom')+
+  (get(st.work,'owned_config.progress_bar')?'<p class="note" style="margin-top:0">'+(get(st.work,'owned_config.flight_source')==='community'?
+   'From the positions the wall already has. Flights with no known route show no bar.':
+   'The FlightWall service sends no positions, so the wall looks each flight on screen up on adsb.fi, about once a minute. Flights adsb.fi cannot see show no bar.')+'</p>':''))+
  '<div class="grid">'+
  card('Brightness','',
   range(P+'brightness_percent',1,100,15,'Brightness','%')+
@@ -507,7 +511,7 @@ function gamesWire(){var rot=$('#rot'),qr=$('#qr');if(!rot)return;
 /* ------------------------------------------------------------ Device */
 function viewDevice(){return '<div class="grid two">'+
  card('Flights feed','',
-  '<p style="margin:4px 0 0">'+esc(FEED[st.feed]||'Unknown')+' · '+(get(st.doc,'owned_config.flight_source')==='community'?'community data':'FlightWall data')+'</p><p class="note">Settings version '+st.rev+' · changes reach the wall within seconds</p>')+
+  '<p style="margin:4px 0 0">'+esc(FEED[st.feed]||'Unknown')+' · '+(get(st.doc,'owned_config.flight_source')==='community'?'community data':'FlightWall data')+'</p><p class="note">Settings version '+st.rev+' · changes reach the wall within seconds</p><p class="note" id="mem">&nbsp;</p>')+
  card('FlightWall app','Settings you change in the FlightWall phone app reach the wall. A setting changed there replaces what is set here for that one setting; everything else stays as you set it here.',
   sw('owned_config.follow_app',true,'Follow changes made in the app')+
   '<p class="note" id="app-state">Checking…</p>'+
@@ -531,9 +535,9 @@ function viewDevice(){return '<div class="grid two">'+
  * the wall either, so the picture is only dimmed to hint at it. */
 var PV={mod:null,el:null,failed:false,loading:false,mode:0,cur:-1,sent:'',sentA:'',sentF:'',logos:{},t0:0,flightsAt:0,live:false};
 var SAMPLE={overflow:0,flights:[
- {icao:'a0f1b2',cs:'JBU615',reg:'N594JB',al_code:'JBU',al_name:'JetBlue Airways',orig_iata:'BOS',dest_iata:'FLL',orig_icao:'KBOS',dest_icao:'KFLL',orig:'Boston Logan Intl',dest:'Fort Lauderdale Hollywood Intl',ac_type:'A320',ac_name:'A320',alt_b:10668,vel:231,trk:172,vr:0},
- {icao:'a4c3d2',cs:'DAL402',reg:'N392DN',al_code:'DAL',al_name:'Delta Air Lines',orig_iata:'ATL',dest_iata:'PBI',orig_icao:'KATL',dest_icao:'KPBI',orig:'Hartsfield-Jackson Atlanta Intl',dest:'Palm Beach Intl',ac_type:'A321',ac_name:'A321',alt_b:9449,vel:221,trk:135,vr:-5},
- {icao:'a1e2f3',cs:'UAL1871',reg:'N24976',al_code:'UAL',al_name:'United Airlines',orig_iata:'EWR',dest_iata:'MIA',orig_icao:'KEWR',dest_icao:'KMIA',orig:'Newark Liberty Intl',dest:'Miami Intl',ac_type:'B789',ac_name:'787-9',alt_b:11582,vel:250,trk:190,vr:0}]};
+ {icao:'a0f1b2',cs:'JBU615',reg:'N594JB',al_code:'JBU',al_name:'JetBlue Airways',orig_iata:'BOS',dest_iata:'FLL',orig_icao:'KBOS',dest_icao:'KFLL',orig:'Boston Logan Intl',dest:'Fort Lauderdale Hollywood Intl',ac_type:'A320',ac_name:'A320',alt_b:10668,vel:231,trk:172,vr:0,prog:38},
+ {icao:'a4c3d2',cs:'DAL402',reg:'N392DN',al_code:'DAL',al_name:'Delta Air Lines',orig_iata:'ATL',dest_iata:'PBI',orig_icao:'KATL',dest_icao:'KPBI',orig:'Hartsfield-Jackson Atlanta Intl',dest:'Palm Beach Intl',ac_type:'A321',ac_name:'A321',alt_b:9449,vel:221,trk:135,vr:-5,prog:81},
+ {icao:'a1e2f3',cs:'UAL1871',reg:'N24976',al_code:'UAL',al_name:'United Airlines',orig_iata:'EWR',dest_iata:'MIA',orig_icao:'KEWR',dest_icao:'KMIA',orig:'Newark Liberty Intl',dest:'Miami Intl',ac_type:'B789',ac_name:'787-9',alt_b:11582,vel:250,trk:190,vr:0,prog:57}]};
 /* fixed: 2 the clock, 0 flights; none: a Flights / No flights switch */
 function pvCard(fixed){PV.want=fixed===undefined?PV.mode:fixed;
  return '<section class="card pv-card"><div class="pv-head"><h2>Preview</h2>'+(fixed===undefined?'<div class="seg" role="group" aria-label="Preview shows">'+
@@ -818,6 +822,8 @@ function wire(root){
  syncWire(root);
  var lr=$('#log-refresh',root);if(lr){lr.onclick=logLoad;$('#log-copy',root).onclick=function(){var t=$('#log').textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){toast('Copied')},function(){toast('Select the text to copy')})};
    var ll=$('#log-live',root);ll.checked=st.logLive;ll.onchange=function(){st.logLive=ll.checked};logLoad()}
+ if($('#mem',root))api('/api/memory').then(function(m){var k=function(b){return Math.round(b/1024)+' KB'},el=$('#mem');
+   if(el)el.textContent='Memory: '+k(m.free)+' free, lowest '+k(m.min_free)+' since it started, largest block '+k(m.largest)}).catch(function(){});
  var so2=$('#signout',root);if(so2)so2.onclick=function(){signedOut();toast('Signed out')};
  var se=$('#signout-all',root);if(se)se.onclick=function(){if(!confirm('Sign out every browser? Each will need a new code from the wall.'))return;
    api('/api/pair/forget',{method:'POST'}).then(function(){signedOut();toast('Signed out everywhere')}).catch(failed)};
@@ -840,7 +846,7 @@ var LIMITS={min_speed_mps:1,max_speed_mps:1,min_altitude:1,max_altitude:1};
 function pick(ks,o){var c={};ks.forEach(function(k){if(o[k]!==undefined&&o[k]!==null&&!(LIMITS[k]&&o[k]<0))c[k]=trim(k,o[k])});return c}
 var EDITABLE={display_config:['layout_template','loading_template','title_text','flight_display_speed','max_flights_behavior','metric_display','border_enable','border_brightness_percent','brightness_percent','anchor_airports','time_zone','clock_is_24hr','clock_show_seconds','clock','date_format','locale','display_enabled','sleep_time'],
  request_config:['radius_requests','data_filters','tracked_flights'],
- owned_config:['flight_source','follow_app','tracking_source','scroll_speed']};
+ owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar']};
 function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
   EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
   if(e.radius_requests===null)delete e.radius_requests;

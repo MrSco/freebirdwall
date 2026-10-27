@@ -27,6 +27,9 @@ bool fw_assets_mount_partition(void);
 
 bool fw_assets_exists(const char *path);
 
+/* A file's size in bytes, or -1 if missing. */
+int fw_assets_file_size(const char *path);
+
 /* Reads a whole file into buf. Returns its size, or -1 if missing/unreadable,
  * or -2 if it is larger than cap. */
 int fw_assets_read_file(const char *path, uint8_t *buf, size_t cap);

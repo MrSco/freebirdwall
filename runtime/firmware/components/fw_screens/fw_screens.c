@@ -165,6 +165,7 @@ void fw_screen_flight(const FwSurface *s, const FwFlightSettings *st, const FwFl
             fw_screen_element_text(s, e, text, white);
         }
     }
+    if (st->progress && f->prog == f->prog) fw_screen_progress(s, f->prog);   /* owned: below footer2 */
 }
 
 /* FUN_4200b92c */
@@ -480,7 +481,7 @@ static void sample_flight(FwFlight *f){
 }
 
 void fw_screen_flight_card(const FwSurface *s, const FwLogo *logo){
-    static const FwFlightSettings st = {{0, 0, 0, 0, false}, FW_TITLE_AIRLINE, NULL, 0, true, "DEFAULT", NULL, NULL};
+    static const FwFlightSettings st = {{0, 0, 0, 0, false}, FW_TITLE_AIRLINE, NULL, 0, true, "DEFAULT", NULL, NULL, false};
     const FwElement *box = &fw_layout_mini_default[0];
     FwFlight f;
     sample_flight(&f);
