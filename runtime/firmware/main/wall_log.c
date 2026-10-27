@@ -10,8 +10,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define RING 7168u                      /* RTC slow memory is 8 KiB; the rest holds the guard and header */
+#define RING 7168u                      /* RTC slow memory is 8 KiB; the rest holds the guard, header and last crash */
 #define MAGIC 0x46574c32u              /* "FWL2": the 7 KiB layout (a 4 KiB one starts afresh) */
+#define CRASH_MAGIC 0x46574331u        /* "FWC1" */
+#define CRASH_LINE 520u
 
 static RTC_NOINIT_ATTR struct {
     uint32_t magic;
@@ -19,7 +21,18 @@ static RTC_NOINIT_ATTR struct {
     uint32_t used;                     /* bytes held, <= RING */
     uint32_t boots;
     char data[RING];
+    /* The last crash's FWPANIC line on its own, so the status lines after
+     * the restart (a few KiB a minute) cannot push it out of the ring: kept
+     * until the next crash, read first (fw_log_read). After the ring, so the
+     * ring stays where older firmware (a rollback) looks for it. */
+    struct {
+        uint32_t magic;
+        uint32_t boot;                 /* s_ring.boots when it crashed */
+        char line[CRASH_LINE];
+    } crash;
 } s_ring;
+static char s_crash_head[48];          /* "--- last crash, in boot N ---" line, or empty */
+static size_t s_crash_bytes;           /* head + line + newline, 0 for none */
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t s_fmt_lock;   /* one shared format buffer, not 400 B of every task's stack */
@@ -43,6 +56,14 @@ void fw_log_init(void){
         s_ring.magic = MAGIC;
     }
     ++s_ring.boots;
+    if (s_ring.crash.magic != CRASH_MAGIC || !memchr(s_ring.crash.line, 0, sizeof s_ring.crash.line)) {
+        memset(&s_ring.crash, 0, sizeof s_ring.crash);
+        s_ring.crash.magic = CRASH_MAGIC;
+    }
+    if (s_ring.crash.line[0]) {
+        snprintf(s_crash_head, sizeof s_crash_head, "--- last crash, in boot %u ---\n", (unsigned)s_ring.crash.boot);
+        s_crash_bytes = strlen(s_crash_head) + strlen(s_ring.crash.line) + 1;
+    }
     s_fmt_lock = xSemaphoreCreateMutexStatic(&s_fmt_storage);
     snprintf(mark, sizeof mark, "--- boot %u, reset reason %d ---\n", (unsigned)s_ring.boots, (int)esp_reset_reason());
     put(mark, strlen(mark));
@@ -57,6 +78,11 @@ void IRAM_ATTR fw_log_panic(const char *line){
         if (s_ring.used < RING) ++s_ring.used;
         if (!*p) break;
     }
+    if (s_ring.crash.magic != CRASH_MAGIC) return;
+    size_t i = 0;
+    for (; i + 1 < CRASH_LINE && line[i]; ++i) s_ring.crash.line[i] = line[i];
+    s_ring.crash.line[i] = 0;
+    s_ring.crash.boot = s_ring.boots;
 }
 
 void fw_log_line(const char *line){
@@ -82,8 +108,17 @@ void fw_state(const char *fmt, ...){
     va_end(ap);
 }
 
+/* Byte i of the last-crash block (i < s_crash_bytes). */
+static char crash_byte(size_t i){
+    size_t head = strlen(s_crash_head), line = s_crash_bytes - head - 1;
+    return i < head ? s_crash_head[i] : i - head < line ? s_ring.crash.line[i - head] : '\n';
+}
+
 size_t fw_log_read(size_t from, char *out, size_t cap){
     size_t n = 0;
+    while (from < s_crash_bytes && n < cap) out[n++] = crash_byte(from++);
+    if (n || !cap) return n;
+    from -= s_crash_bytes;
     portENTER_CRITICAL(&s_mux);
     if (from < s_ring.used) {
         size_t start = (s_ring.head + RING - s_ring.used) % RING;

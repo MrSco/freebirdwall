@@ -53,6 +53,7 @@
 #include "big_buffer.h"
 #include "stats.h"
 #include "crash_guard.h"
+#include "panic_note.h"
 #include "board_check.h"
 #include "sync_store.h"
 
@@ -117,6 +118,7 @@ void app_main(void){
     const esp_timer_create_args_t deadline_args={.callback=pending_deadline,.name="fw_pending"};
 
     fw_log_init();      /* status lines also kept in RTC memory for GET /v1/log */
+    fw_panic_note_init();   /* the task watchdog's FWPANIC line says which CPU starved */
     report_identity();
     const bool safe=fw_crash_guard_boot();   /* crash loop: Wi-Fi and updates only */
     snprintf(extra,sizeof extra,"\"tls_arena\":%u,\"tls_context_reserved\":%u,\"tls_context_needed\":%u",

@@ -5,13 +5,19 @@
  * wrapped (-Wl,--wrap, main/CMakeLists.txt); the wrappers format by hand
  * (no printf, no locks, IRAM only), then run the originals.
  *   FWPANIC {"reason":"...","task":"...","details":"...","exccause":n,
- *            "excvaddr":"0x...","pc":"0x... 0x... (up to 8)"} */
+ *            "excvaddr":"0x...","pc":"0x... 0x... (up to 8)","wdt":"..."}
+ * "wdt" only after the task watchdog: it watches the two idle tasks, so for
+ * each CPU it says how long ago its idle task last ran (from an idle hook)
+ * and which task was running when the watchdog fired, e.g.
+ *   "CPU0 idle 10012 ms ago, running ipc0; CPU1 idle 3 ms ago, running feed"
+ * The CPU whose idle task is ~10 s behind is the starved one. */
 #include "panic_note.h"
 #include <stdint.h>
 #include "esp_attr.h"
 #include "esp_debug_helpers.h"
 #include "soc/cpu.h"
 #include "esp_private/panic_internal.h"
+#include "esp_freertos_hooks.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/xtensa_context.h"
@@ -20,7 +26,9 @@
 #define DEPTH 8
 
 static DRAM_ATTR char s_details[80];      /* panic_abort's text, e.g. a stack overflow */
-static DRAM_ATTR char s_line[400];
+static DRAM_ATTR char s_wdt[120];         /* esp_task_wdt_isr_user_handler's text */
+static DRAM_ATTR char s_line[520];
+static volatile DRAM_ATTR TickType_t s_idle_at[portNUM_PROCESSORS];
 
 void __real_esp_panic_handler(panic_info_t *info);
 void __real_panic_abort(const char *details) __attribute__((noreturn));
@@ -44,6 +52,34 @@ static void IRAM_ATTR dec(Out *o, uint32_t v){
     int n = 0;
     do { b[n++] = (char)('0' + v % 10); v /= 10; } while (v && n < 10);
     while (n && o->p < o->end) *o->p++ = b[--n];
+}
+
+static bool idle_seen(void){
+    s_idle_at[xPortGetCoreID()] = xTaskGetTickCount();
+    return true;
+}
+
+void fw_panic_note_init(void){
+    for (int c = 0; c < portNUM_PROCESSORS; ++c) {
+        s_idle_at[c] = xTaskGetTickCount();
+        esp_register_freertos_idle_hook_for_cpu(idle_seen, (UBaseType_t)c);
+    }
+}
+
+/* esp-idf calls this from the task watchdog's interrupt, before abort(). */
+void IRAM_ATTR esp_task_wdt_isr_user_handler(void){
+    TickType_t now = xTaskGetTickCountFromISR();
+    Out o = {s_wdt, s_wdt + sizeof s_wdt - 1};
+    for (int c = 0; c < portNUM_PROCESSORS; ++c) {
+        TaskHandle_t t = xTaskGetCurrentTaskHandleForCPU(c);
+        lit(&o, c ? "; CPU" : "CPU");
+        dec(&o, (uint32_t)c);
+        lit(&o, " idle ");
+        dec(&o, (uint32_t)(now - s_idle_at[c]) * portTICK_PERIOD_MS);
+        lit(&o, " ms ago, running ");
+        text(&o, t ? pcTaskGetName(t) : "", 16);
+    }
+    *o.p = 0;
 }
 
 void IRAM_ATTR __wrap_panic_abort(const char *details){
@@ -76,6 +112,11 @@ void IRAM_ATTR __wrap_esp_panic_handler(panic_info_t *info){
             hex(&o, esp_cpu_process_stack_pc(b.pc));
             if (!b.next_pc || !esp_backtrace_get_next_frame(&b)) break;
         }
+        lit(&o, "\"");
+    }
+    if (s_wdt[0]) {
+        lit(&o, ",\"wdt\":\"");
+        text(&o, s_wdt, sizeof s_wdt);
         lit(&o, "\"");
     }
     lit(&o, "}");

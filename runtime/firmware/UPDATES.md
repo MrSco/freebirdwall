@@ -11,7 +11,7 @@ same way (`main/owner_update.c`).
 | `PUT /v1/firmware` | upload into the other slot: binary body, `If-Match` with the running hash, `X-Firmware-SHA256` |
 | `POST /v1/firmware/confirm` | keep a pending image (see below) |
 | `POST /v1/firmware/switch` | owned only: boot the image in the other slot |
-| `GET /v1/log` | owned only: the recent status lines (`FWSTATE`, `FWMEM`), oldest first, as plain text |
+| `GET /v1/log` | owned only: the recent status lines (`FWSTATE`, `FWMEM`), oldest first, as plain text; the last crash's `FWPANIC` line first, under `--- last crash, in boot N ---` |
 
 Every route needs `Authorization: Bearer <device key>` — the same 32-byte key
 the packer writes into the image's `FWOTA1` descriptor, so nothing new is

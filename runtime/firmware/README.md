@@ -36,7 +36,8 @@ log. For owners, start with the [beginner's guide](../../README.md).
   partition table, the vendor model `mini-v1`. On a mismatch the panel stays
   off. The USB installer makes the same check before it writes anything.
 - **Crashes**: three in a row start safe mode (Wi-Fi and the update service
-  only); each crash writes an `FWPANIC` line to the Wi-Fi log.
+  only); each crash writes an `FWPANIC` line to the Wi-Fi log (after the task
+  watchdog, also which CPU's idle task was starved and what each CPU ran).
 - **Never prints** credentials, keys, pairing codes or settings values.
 - The bootloader and partition table are never written.
 
