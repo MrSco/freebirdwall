@@ -12,9 +12,11 @@ dot size (zero-length segments with round caps) keeps them to a few KB:
   main/icon.svg   the favicon: the app's blue tile with the dotted white bird,
                   also written as a data: URI into the pages that show it
                   (main/dashboard.html, main/games_page.html and the
-                  installer's src/installer.html)
+                  installer's src/installer.html), and served as /icon.svg
+                  by the setup page (setup_server.c)
   main/icon.png   192x192 for phone home screens (apple-touch-icon, the
-                  manifest), a 32-colour PNG, served from flash
+                  manifests), a 32-colour PNG, served from flash by the
+                  dashboard and the setup page
   components/fw_screens/fw_brand.c
                   the bird for the panel's boot splash, BRAND_H rows of
                   4-bit coverage (white, anti-aliased), drawn by

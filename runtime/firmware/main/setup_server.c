@@ -579,7 +579,7 @@ static const char PAGE[] =
     "<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>"
     "<meta name=theme-color content=#0b1220><meta name=apple-mobile-web-app-capable content=yes>"
     "<meta name=apple-mobile-web-app-status-bar-style content=black-translucent>"
-    "<link rel=manifest href=/manifest.json><link rel=icon href=/icon.svg><link rel=apple-touch-icon href=/icon.svg>"
+    "<link rel=manifest href=/manifest.json><link rel=icon href=/icon.svg?v=3><link rel=apple-touch-icon href=/icon.png?v=3>"
     "<title>FreeBirdWall setup</title><style>"
     ":root{--bg:#0b1220;--card:#141c2e;--line:#26314a;--text:#e8eefc;--dim:#93a0bd;--ok:#2fbf71;--bad:#ef5b5b;--acc:#ffb020}"
     "*{box-sizing:border-box}body{margin:0;font:16px/1.4 system-ui,-apple-system,sans-serif;background:var(--bg);"
@@ -632,11 +632,15 @@ static const char PAGE[] =
 static const char MANIFEST[] =
     "{\"name\":\"FreeBirdWall setup\",\"short_name\":\"FreeBirdWall\",\"start_url\":\"/\",\"display\":\"standalone\","
     "\"background_color\":\"#0b1220\",\"theme_color\":\"#0b1220\","
-    "\"icons\":[{\"src\":\"/icon.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any maskable\"}]}";
+    "\"icons\":[{\"src\":\"/icon.svg?v=3\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any maskable\"},"
+    "{\"src\":\"/icon.png?v=3\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any maskable\"}]}";
 
-static const char ICON[] =
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='#0b1220'/>"
-    "<path fill='#ffb020' d='M30 12h4l3 16 15 7v4l-15-3-1 11 5 4v3l-7-2-7 2v-3l5-4-1-11-15 3v-4l15-7z'/></svg>";
+/* The same icons as the dashboard (tools/make_icon.py, embedded by
+ * CMakeLists.txt); bump ?v= with games_server.c when they change. */
+extern const char icon_svg_start[] asm("_binary_icon_svg_start");
+extern const char icon_svg_end[] asm("_binary_icon_svg_end");
+extern const char icon_png_start[] asm("_binary_icon_png_start");
+extern const char icon_png_end[] asm("_binary_icon_png_end");
 
 static esp_err_t page_get(httpd_req_t *req){
     if (!gate(req)) return ESP_OK;
@@ -656,7 +660,14 @@ static esp_err_t icon_get(httpd_req_t *req){
     if (!gate(req)) return ESP_OK;
     httpd_resp_set_type(req, "image/svg+xml");
     httpd_resp_set_hdr(req, "Cache-Control", "max-age=86400");
-    return httpd_resp_send(req, ICON, sizeof ICON - 1);
+    return httpd_resp_send(req, icon_svg_start, icon_svg_end - icon_svg_start);
+}
+
+static esp_err_t icon_png_get(httpd_req_t *req){
+    if (!gate(req)) return ESP_OK;
+    httpd_resp_set_type(req, "image/png");
+    httpd_resp_set_hdr(req, "Cache-Control", "max-age=86400");
+    return httpd_resp_send(req, icon_png_start, icon_png_end - icon_png_start);
 }
 
 /* Captive portal: any unknown page (the phones' connectivity checks among
@@ -715,6 +726,7 @@ static void register_routes(httpd_handle_t h){
         {.uri = "/list_wifi", .method = HTTP_GET, .handler = list_wifi_get},
         {.uri = "/manifest.json", .method = HTTP_GET, .handler = manifest_get},
         {.uri = "/icon.svg", .method = HTTP_GET, .handler = icon_get},
+        {.uri = "/icon.png", .method = HTTP_GET, .handler = icon_png_get},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(h, &routes[i]);
 }

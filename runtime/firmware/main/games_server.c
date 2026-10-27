@@ -32,8 +32,9 @@ extern const char icon_end[] asm("_binary_icon_png_end");
 
 /* "Add to Home Screen": opens the dashboard full screen with our icon
  * (tools/make_icon.py). Served from flash; costs no RAM. iOS keeps home-screen
- * icons by address, so bump ?v= here and in both pages whenever icon.png
- * changes (v=2: the Freebird bird replaced the plane; v=3: the bird in dots). */
+ * icons by address, so bump ?v= here, in both pages and in setup_server.c
+ * whenever the icons change (v=2: the Freebird bird replaced the plane;
+ * v=3: the bird in dots). */
 static const char manifest[] =
     "{\"name\":\"FreeBirdWall\",\"short_name\":\"FreeBirdWall\",\"start_url\":\"/\",\"display\":\"standalone\","
     "\"background_color\":\"#0b0d12\",\"theme_color\":\"#0b0d12\","
