@@ -150,8 +150,13 @@ Where the aircraft position comes from:
 - **FlightWall source,** which sends no positions: the shown flights' positions
   from adsb.fi by ICAO address (`/api/v2/hex/<hex>`, `main/position_fix.cpp`),
   only while the option is on: at most one lookup per FlightWall poll (10 s),
-  for the flight whose position is oldest, each flight at most every 50 s, and
-  only when both its airports are in the table. A position counts for
+  flights in the air first, for the one whose position is oldest, each flight
+  at most every 50 s, and only when both its airports are in the table.
+  The feed also lists aircraft parked or taxiing at an airport, which adsb.fi
+  often cannot hear (transponders off at the gate): those need no lookup when
+  only one of their airports lies in one of the owner's areas (5 km to spare):
+  they are at that airport, 0 at the origin, 100 at the destination
+  (`fw_ground_progress`); both or neither in an area: looked up last. A position counts for
   3 minutes. The lookup runs on the feed task between polls (one TLS
   connection at a time, the shared block as arena) and reads the answer byte
   by byte: no JSON document, five 24-byte static slots, no heap. The log has
@@ -284,6 +289,14 @@ Measured with `/api/memory` every 5 s while `/api/flights` was asked every
   of 560 listed flights had a bar; why the others had none (no route in the
   feed, an airport not in the table, adsb.fi not seeing them) is not yet known.
 - Switching back to community set the lowest point of the run: 19,704 bytes.
+
+Why only 120: checked flight by flight against adsb.fi, most of the FlightWall
+feed's list was aircraft parked or taxiing at Miami and Fort Lauderdale, which
+adsb.fi did not hear (the wall's own log: 34 of 50 lookups "not seen"), and
+lookups for them delayed the aircraft in the air. With the ground rule and
+airborne-first lookups (build `owned-skeleton-v1-d8bf28460c67`), 4 minutes on
+the FlightWall source: 343 of 370 listed flights had a bar, no errors, lowest
+free RAM 21,440 bytes.
 
 ## On the board — verified 2026-10-19
 

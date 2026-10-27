@@ -34,6 +34,8 @@
 #include "sync_store.h"
 #include "position_fix.h"
 #include "fw_airports.h"
+#include "cJSON.h"
+#include <math.h>
 #include <strings.h>
 #include <time.h>
 
@@ -70,6 +72,8 @@ static char s_sync_flight[16];          /* the Sync leg asked for as a tracked f
 typedef struct { char hex[8]; float lat, lon; bool ground, ok; uint32_t at; } Fix;
 static Fix s_fix[FW_FEED_MAX_FLIGHTS];
 static unsigned s_fixes, s_fix_fails;
+static FwWatchArea s_areas[5];          /* the owner's areas, for flights on the ground */
+static int s_area_count;
 
 FwFeedState fw_feed_state(void){ return s_state; }
 uint32_t fw_feed_display_serial(void){ return s_display_serial; }
@@ -120,6 +124,12 @@ static bool route_known(const FwFlight *f, double *olat, double *olon, double *d
     return fw_airport_position(f->orig_icao, olat, olon) && fw_airport_position(f->dest_icao, dlat, dlon);
 }
 
+/* A flight on the ground at one of its airports needs no lookup
+ * (fw_ground_progress): NAN when that cannot tell. */
+static double ground_progress(const FwFlight *f){
+    return f->gnd ? fw_ground_progress(f->orig_icao, f->dest_icao, s_areas, s_area_count) : NAN;
+}
+
 /* The FlightWall list's progress from the fresh positions; s_lock held. */
 static void apply_progress(FwFeedFrame *fr){
     uint32_t now = now_ms();
@@ -130,6 +140,8 @@ static void apply_progress(FwFeedFrame *fr){
         double olat, olon, dlat, dlon;
         if (x && x->ok && now - x->at < FIX_VALID_MS && route_known(f, &olat, &olon, &dlat, &dlon))
             f->prog = fw_route_progress(olat, olon, dlat, dlon, x->lat, x->lon, x->ground || f->gnd);
+        else
+            f->prog = ground_progress(f);
     }
 }
 
@@ -143,14 +155,19 @@ static void fix_step(void){
     int rc;
     Fix *slot = NULL;
     if (s_source != FW_SOURCE_VENDOR || !s_display.progress_bar) return;
+    /* flights in the air first; one on the ground only when its airport does
+     * not already tell (ground_progress), and only when no airborne one is due */
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    for (int i = 0; i < s_frame.count && !s_frame.tracked; ++i) {
-        const FwFlight *f = &s_frame.flights[i];
-        const Fix *x = fix_for(f->icao);
-        uint32_t age = x ? now - x->at : UINT32_MAX;
-        if (strlen(f->icao) == 6 && age >= FIX_EVERY_MS && age > oldest && route_known(f, &a, &b, &c, &d)) {
-            oldest = age;
-            snprintf(hex, sizeof hex, "%s", f->icao);
+    for (int pass = 0; pass < 2 && !hex[0]; ++pass) {
+        for (int i = 0; i < s_frame.count && !s_frame.tracked; ++i) {
+            const FwFlight *f = &s_frame.flights[i];
+            const Fix *x = fix_for(f->icao);
+            uint32_t age = x ? now - x->at : UINT32_MAX;
+            if (f->gnd != (pass == 1) || (f->gnd && ground_progress(f) == ground_progress(f))) continue;
+            if (strlen(f->icao) == 6 && age >= FIX_EVERY_MS && age > oldest && route_known(f, &a, &b, &c, &d)) {
+                oldest = age;
+                snprintf(hex, sizeof hex, "%s", f->icao);
+            }
         }
     }
     xSemaphoreGive(s_lock);
@@ -287,6 +304,31 @@ done:
 
 /* (Re)reads the owned settings: the source, its request and the display
  * settings. */
+/* request_config.radius_requests (or the older single radius_request), for
+ * the progress bar of flights on the ground (fw_ground_progress). */
+static void read_areas(const char *doc){
+    cJSON *root = doc ? cJSON_Parse(doc) : NULL, *rc = cJSON_GetObjectItemCaseSensitive(root, "request_config"), *z;
+    cJSON *list = cJSON_GetObjectItemCaseSensitive(rc, "radius_requests"), *one = cJSON_GetObjectItemCaseSensitive(rc, "radius_request");
+    int n = 0;
+    FwWatchArea areas[5];
+    if (!cJSON_IsArray(list)) list = NULL;
+    if (!cJSON_IsObject(one)) one = NULL;
+    for (z = list ? list->child : one; z && n < 5; z = list ? z->next : NULL) {
+        const cJSON *lat = cJSON_GetObjectItemCaseSensitive(z, "latitude"), *lon = cJSON_GetObjectItemCaseSensitive(z, "longitude");
+        const cJSON *r = cJSON_GetObjectItemCaseSensitive(z, "radius_km");
+        if (!cJSON_IsNumber(lat) || !cJSON_IsNumber(lon)) continue;
+        areas[n].lat = (float)lat->valuedouble;
+        areas[n].lon = (float)lon->valuedouble;
+        areas[n].radius_km = cJSON_IsNumber(r) ? (float)r->valuedouble : 50.0f;
+        ++n;
+    }
+    cJSON_Delete(root);
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    memcpy(s_areas, areas, sizeof areas[0] * (size_t)n);
+    s_area_count = n;
+    xSemaphoreGive(s_lock);
+}
+
 static void configure(void){
     uint32_t rev = 0;
     char *doc = fw_store_settings(&rev);
@@ -298,6 +340,7 @@ static void configure(void){
     s_store_serial = fw_store_serial();
     s_follow = doc ? fw_feed_follow_app(doc) : true;
     shown = doc && fw_feed_display(doc, &d);
+    read_areas(doc);
     if (shown && src == FW_SOURCE_COMMUNITY) ok = fw_community_configure(doc, &info);   /* this task only */
     xSemaphoreTake(s_lock, portMAX_DELAY);
     if (shown && src == FW_SOURCE_VENDOR) ok = s_has_key && build_request(s_key, doc);

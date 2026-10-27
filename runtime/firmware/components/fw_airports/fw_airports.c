@@ -48,6 +48,21 @@ static double distance(double lat1, double lon1, double lat2, double lon2){
     return 2 * r * atan2(sqrt(a), sqrt(1 - a));
 }
 
+static bool in_area(double lat, double lon, const FwWatchArea *areas, int n){
+    for (int i = 0; i < n; ++i)
+        if (distance(lat, lon, areas[i].lat, areas[i].lon) <= (areas[i].radius_km + 5) * 1000) return true;
+    return false;
+}
+
+double fw_ground_progress(const char *orig_icao, const char *dest_icao, const FwWatchArea *areas, int n){
+    double olat, olon, dlat, dlon;
+    bool o, d;
+    if (!fw_airport_position(orig_icao, &olat, &olon) || !fw_airport_position(dest_icao, &dlat, &dlon)) return NAN;
+    o = in_area(olat, olon, areas, n);
+    d = in_area(dlat, dlon, areas, n);
+    return o == d ? NAN : o ? 0 : 100;
+}
+
 double fw_route_progress(double olat, double olon, double dlat, double dlon, double lat, double lon, bool ground){
     double route, flown, left;
     if (nan_(olat) || nan_(olon) || nan_(dlat) || nan_(dlon) || nan_(lat) || nan_(lon)) return NAN;

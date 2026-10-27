@@ -21,6 +21,17 @@ bool fw_airport_position(const char *icao, double *lat, double *lon);
  * it (flown + left > 1.5 x the route: a wrong or stale route). */
 double fw_route_progress(double olat, double olon, double dlat, double dlon, double lat, double lon, bool ground);
 
+/* One of the owner's areas (request_config.radius_requests). */
+typedef struct { float lat, lon, radius_km; } FwWatchArea;
+
+/* Owned: a flight on the ground with no position (the FlightWall feed lists
+ * parked and taxiing aircraft, which adsb.fi often cannot hear): it was listed
+ * because it is in one of the areas, so it is at whichever of its airports
+ * lies in one (5 km to spare): 0 at its origin, 100 at its destination. NAN
+ * when neither or both do (FLL to MIA with an area on each), or an airport is
+ * not in the table. */
+double fw_ground_progress(const char *orig_icao, const char *dest_icao, const FwWatchArea *areas, int n);
+
 #ifdef __cplusplus
 }
 #endif

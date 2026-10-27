@@ -46,6 +46,15 @@ int main(void){
         p = fw_route_progress(lat, lon, hlat, hlon, 30, -175, false);
         CHECK(p > 50 && p < 90, "across the date line");
     }
+    {   /* on the ground, no position: the airport in an area tells (MIA area, Fort Lauderdale area) */
+        const FwWatchArea mia[1] = {{25.7959f, -80.2870f, 3.2f}}, both[2] = {{25.7959f, -80.2870f, 3.2f}, {26.0726f, -80.1527f, 5}};
+        CHECK(fw_ground_progress("KMIA", "TJSJ", mia, 1) == 0, "ground: at its origin, 0");
+        CHECK(fw_ground_progress("EGLL", "KMIA", mia, 1) == 100, "ground: at its destination, 100");
+        CHECK(none(fw_ground_progress("KFLL", "KMIA", both, 2)), "ground: both airports in areas, none");
+        CHECK(none(fw_ground_progress("KATL", "KJFK", mia, 1)), "ground: neither airport in an area, none");
+        CHECK(none(fw_ground_progress("KMIA", "", mia, 1)) && none(fw_ground_progress("KMIA", "ZZZZ", mia, 1)), "ground: unknown airport, none");
+        CHECK(none(fw_ground_progress("KMIA", "TJSJ", mia, 0)), "ground: no areas, none");
+    }
     printf("%s: %d airport checks, %d failed\n", failed ? "FAIL" : "PASS", checks, failed);
     return failed != 0;
 }
