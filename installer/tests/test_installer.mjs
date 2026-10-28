@@ -158,12 +158,55 @@ if (!existsSync(BACKUP) || !existsSync(IMAGE)) {
     ok(diff === 0, 'switch: nothing but otadata changed');
 
     // an update from the vendor firmware is an install again (new key);
-    // from the owned firmware it keeps the key
+    // from the owned firmware it keeps the key, and the vendor firmware: it
+    // replaces the running FreeBirdWall, after pointing the next boot at the
+    // vendor firmware, so a stop at any point starts that
     const sel = otaSelect(dev.flash.subarray(OTADATA, OTADATA + 0x2000), 0);
     dev.flash.set(sel.sector, sel.address);
     const up = await check(dev);
+    const vendorBefore = hex(dev.flash.subarray(SLOTS[1], SLOTS[1] + 0x2c0000));
+    dev.writes = [];
     const res2 = await install(dev, up, base);
-    ok(up.mode === 'update' && res2.target === 1 && hex(res2.key) === hex(res.key), 'update: other slot, same key');
+    ok(up.mode === 'update' && res2.target === 0 && hex(res2.key) === hex(res.key), 'update: over the running FreeBirdWall, same key');
+    ok(hex(dev.flash.subarray(SLOTS[1], SLOTS[1] + 0x2c0000)) === vendorBefore, 'update: the vendor firmware in app1 is untouched');
+    ok(dev.writes.length === 3 && dev.writes[0].addr >= OTADATA && dev.writes[0].addr < SLOTS[0] && dev.writes[1].addr === SLOTS[0] &&
+       dev.writes[2].addr >= OTADATA && dev.writes[2].addr < SLOTS[0], 'update: boot choice to the vendor firmware, image, boot choice back');
+    ok(otaBoot(dev.flash.subarray(OTADATA, OTADATA + 0x2000)).slot === 0, 'update: FreeBirdWall starts next');
+    const after = await check(dev);
+    ok(after.mode === 'update' && after.kinds.join() === 'owned,vendor', 'update: checked again, the vendor firmware is still there');
+    const res3 = await install(dev, after, base);
+    ok(res3.target === 0 && hex(dev.flash.subarray(SLOTS[1], SLOTS[1] + 0x2c0000)) === vendorBefore, 'update: again, and the vendor firmware stays');
+    const sw2 = await switchToVendor(dev, await check(dev));
+    ok(sw2.changed && sw2.slot === 1, 'update: the vendor firmware can still be started after two updates');
+  }
+
+  // an update cut off while it writes over the running FreeBirdWall: the
+  // vendor firmware starts, and the error says so
+  {
+    const d = good();
+    await install(d, await check(d), base);
+    const cut = new FakeDevice(d.flash.slice());
+    const real = cut.writeFlash.bind(cut);
+    cut.writeFlash = async (addr, bytes, p) => { if (addr === SLOTS[0]) { cut.flash.fill(0xff, addr, addr + 0x10000); throw new Error('the cable came out'); } return real(addr, bytes, p); };
+    let err = null;
+    try { await install(cut, await check(cut), base); } catch (e) { err = e; }
+    ok(err && /cable/.test(err.message) && err.starts === 'the vendor firmware', 'update cut off: the error says the vendor firmware starts');
+    ok(otaBoot(cut.flash.subarray(OTADATA, OTADATA + 0x2000)).slot === 1, 'update cut off: the board starts the vendor firmware');
+    const re = await check(cut);
+    ok(re.ok && re.mode === 'install' && re.bootSlot === 1, 'update cut off: checked again, it installs from the vendor firmware');
+  }
+
+  // an update on a board whose vendor firmware an older installer replaced:
+  // the other slot, as before
+  {
+    const d = good();
+    const r1 = await install(d, await check(d), base);
+    const old = await packImage(base, r1.key);
+    d.flash.set(old, SLOTS[1]);                  /* FreeBirdWall in both slots */
+    const r = await check(d);
+    ok(r.kinds.join() === 'owned,owned', 'no vendor left: both slots FreeBirdWall');
+    const res = await install(d, r, base);
+    ok(res.target === 1 && otaBoot(d.flash.subarray(OTADATA, OTADATA + 0x2000)).slot === 1, 'no vendor left: the update goes to the slot not running');
   }
 
   // a write that does not read back: nothing else changes

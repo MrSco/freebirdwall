@@ -93,7 +93,8 @@ async function runCheck() {
     say('#check-msg', 'This is a FlightWall mini running the vendor’s firmware. FreeBirdWall can be installed. The vendor firmware stays on the board and can be started again from this page.', 'good');
   } else {
     say('#check-msg', `This wall already runs FreeBirdWall (${esc(r.descs[r.bootSlot].version)}). Installing updates it to ${esc(fwDesc.version)} and keeps your sign-ins.` +
-      (other === 'vendor' ? ' The vendor firmware kept on the board is replaced by the update; your backup can bring it back.' : ''), 'good');
+      (other === 'vendor' ? ' The vendor firmware stays on the board and can still be started again from this page.'
+        : ' The vendor firmware is no longer on the board (an earlier update replaced it); your backup can bring it back.'), 'good');
   }
   step(3);
   show('#backup');
@@ -168,14 +169,14 @@ $('#do-install').onclick = async () => {
     const res = await install(state.dev, state.report, firmware, (what, done, total) =>
       progress('#install-progress', done, total, what === 'write' ? `Writing ${mb(done)} of ${mb(total)}` : what === 'verify' ? `Checking ${mb(done)} of ${mb(total)}` : 'Reading the key on the board'));
     state.key = res.key;
-    $('#vendor').disabled = false;                   /* the vendor firmware is in the other slot now */
+    $('#vendor').disabled = false;                   /* the vendor firmware stays in the other slot (targetSlot) */
     say('#install-msg', `Installed ${esc(res.desc.version)} and checked it. Starting the wall…`, 'good');
     step(5);
     show('#start');
     await watchStart();
   } catch (e) {
     $('#do-install').disabled = false;
-    say('#install-msg', `Not installed: ${esc(e.message || e)}. The wall still starts its old firmware.`, 'bad');
+    say('#install-msg', `Not installed: ${esc(e.message || e)}. The wall starts ${e.starts || 'its old firmware'}; you can install again.`, 'bad');
   }
 };
 

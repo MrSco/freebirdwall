@@ -6,9 +6,11 @@
 //           readFlash(addr, size, onProgress?) -> Uint8Array,
 //           writeFlash(addr, bytes, onProgress?) }
 //
-// Order is chosen so a failure at any point leaves a board that still starts
-// what it started before: the new image goes into the slot that is not
-// running, is read back and compared, and only then is the next boot changed.
+// Order is chosen so a failure at any point leaves a board that starts a
+// working firmware: the new image goes into a slot the next boot does not
+// use, is read back and compared, and only then is the next boot changed.
+// An update keeps the vendor firmware (targetSlot): it writes over the
+// FreeBirdWall slot after pointing the next boot at the vendor firmware.
 import {
   EFUSE_WORDS, FLASH_BYTES, OTADATA, PARTITION_TABLE, SLOTS, SLOT_BYTES,
   appDescription, checkBoard, decodeEfuses, hex, installedKey, newKey, otaBoot, otaSelect, packImage,
@@ -58,13 +60,29 @@ export async function readSlotImage(dev, slot) {
   return image;
 }
 
-// Installs the owned firmware `base` (the unpackaged build) into the slot
-// that is not running and makes it the next boot. A board already on the
-// owned firmware keeps its key (Wi-Fi updates and sign-ins stay valid); a
-// board on the vendor firmware gets a new random key.
+// Where an install goes: the slot that is not running, except on an update
+// whose other slot holds the vendor firmware. Then the update replaces the
+// running FreeBirdWall, so the vendor firmware stays for "Start the vendor
+// firmware again" however many updates follow.
+export function targetSlot(report) {
+  const other = 1 - report.bootSlot;
+  return report.mode === 'update' && report.kinds[other] === 'vendor' ? report.bootSlot : other;
+}
+
+// Points the next boot at `slot`, and checks it took.
+async function selectBoot(dev, slot) {
+  const sel = otaSelect(await dev.readFlash(OTADATA, 0x2000), slot);
+  await dev.writeFlash(sel.address, sel.sector);
+  return otaBoot(await dev.readFlash(OTADATA, 0x2000)).slot === slot;
+}
+
+// Installs the owned firmware `base` (the unpackaged build) into targetSlot
+// and makes it the next boot. A board already on the owned firmware keeps its
+// key (Wi-Fi updates and sign-ins stay valid); a board on the vendor firmware
+// gets a new random key.
 export async function install(dev, report, base, onProgress = () => {}) {
   if (report.mode !== 'install' && report.mode !== 'update') throw new Error('the board check did not pass');
-  const target = 1 - report.bootSlot;
+  const target = targetSlot(report);
   let key = null;
   if (report.mode === 'update') {
     onProgress('key', 0, 1);
@@ -74,27 +92,34 @@ export async function install(dev, report, base, onProgress = () => {}) {
   }
   key = key || newKey();
   const image = await packImage(base, key);
-  await dev.writeFlash(SLOTS[target], image, (done, total) => onProgress('write', done, total));
-  const back = await dev.readFlash(SLOTS[target], image.length, (done, total) => onProgress('verify', done, total));
-  if (hex(await sha256(back)) !== hex(await sha256(image))) throw new Error('the written firmware did not read back the same; nothing else was changed');
-  const sel = otaSelect(await dev.readFlash(OTADATA, 0x2000), target);
-  await dev.writeFlash(sel.address, sel.sector);
-  const now = otaBoot(await dev.readFlash(OTADATA, 0x2000));
-  if (now.slot !== target) throw new Error('the next start could not be selected; the board still starts its old firmware');
+  let starts = 'its old firmware';              /* what the board starts if this stops here (error.starts) */
+  try {
+    if (target === report.bootSlot) {
+      const vendor = 1 - target;
+      if (slotKind(appDescription(await dev.readFlash(SLOTS[vendor], 0x1000))) !== 'vendor') throw new Error('the other slot changed; check the board again');
+      if (!await selectBoot(dev, vendor)) throw new Error('the next start could not be changed');
+      starts = 'the vendor firmware';
+    }
+    await dev.writeFlash(SLOTS[target], image, (done, total) => onProgress('write', done, total));
+    const back = await dev.readFlash(SLOTS[target], image.length, (done, total) => onProgress('verify', done, total));
+    if (hex(await sha256(back)) !== hex(await sha256(image))) throw new Error('the written firmware did not read back the same');
+    if (!await selectBoot(dev, target)) throw new Error('the next start could not be selected');
+  } catch (e) {
+    e.starts = starts;
+    throw e;
+  }
   return { key, target, imageSha256: hex(await sha256(image)), desc: appDescription(image) };
 }
 
 // Starts the vendor firmware again (it stays in the other slot after an
-// install). Only the boot choice changes.
+// install, and after updates: targetSlot). Only the boot choice changes.
 export async function switchToVendor(dev, report) {
   const slot = report.kinds.indexOf('vendor');
   if (slot < 0) throw new Error('no vendor firmware on the board; restore your backup instead');
   if (slot === report.bootSlot) return { slot, changed: false };
   const head = await dev.readFlash(SLOTS[slot], 0x1000);
   if (slotKind(appDescription(head)) !== 'vendor') throw new Error('the other slot changed; check the board again');
-  const sel = otaSelect(await dev.readFlash(OTADATA, 0x2000), slot);
-  await dev.writeFlash(sel.address, sel.sector);
-  if (otaBoot(await dev.readFlash(OTADATA, 0x2000)).slot !== slot) throw new Error('the next start could not be selected');
+  if (!await selectBoot(dev, slot)) throw new Error('the next start could not be selected');
   return { slot, changed: true };
 }
 

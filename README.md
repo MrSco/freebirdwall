@@ -15,7 +15,7 @@ keeps everything the wall already does, needs no subscription, and adds:
 - **Stats** of the planes your wall has seen, **extra clocks**, and **your own airport names**.
 - **Names that fit.** Long airline and airport names are shortened, and scroll if they are still too long.
 
-You can go back to the original firmware at any time. Nothing is deleted.
+You can go back to the original firmware at any time: it stays on the wall, next to FreeBirdWall.
 
 ---
 
@@ -138,15 +138,19 @@ flights.
 ## Updates
 
 Plug in the USB cable and open the installer again; it always has the newest version. It sees that the wall already runs
-FreeBirdWall, keeps your settings and sign-ins, and updates it.
+FreeBirdWall, keeps your settings and sign-ins, and updates it. The original firmware stays on the wall through every update.
+
+Installed with an installer from before October 28, 2026? Those replaced the original firmware with the first update. The
+installer tells you when that has happened; your backup brings it back (below).
 
 ## Going back
 
 Plug in the USB cable, open the installer and click **Connect**. Under **Go back** you can:
 
-- **Start the vendor firmware again.** The original firmware stays on the wall after an install, so this only changes which one
-  starts. Your dashboard settings stay on the wall in case you come back.
-- **Restore a backup.** Puts your backup file back, so the wall is exactly as it was when you saved it.
+- **Start the vendor firmware again.** The original firmware stays on the wall after an install and after updates, so this
+  only changes which one starts. Your dashboard settings stay on the wall in case you come back.
+- **Restore a backup.** Puts your backup file back, so the wall is exactly as it was when you saved it. Keep the backup from your
+  first install: it is the one copy of your wall as it came.
 
 ---
 
