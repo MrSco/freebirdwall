@@ -61,10 +61,11 @@ sleep and aliases, exact dashboard, PC desk stopped and credential exclusion.
 
 ## Linked footprint vs. patched stock image — 2026-10-19
 
-Offline only. [`tools/measure_link.py`](tools/measure_link.py) links the full
+Offline only. A script of the earlier stock-patching project (not kept here:
+it needs that project's patch tool) linked the full
 C interface ([`tools/link_probe.c`](tools/link_probe.c)) against the Xtensa
-libraries with `--gc-sections` and compares the result with the registered
-`0ab195d6…` base and `owner-provider-v1` blobs (exit status 2 = does not fit).
+libraries with `--gc-sections` and compared the result with the registered
+`0ab195d6…` base and `owner-provider-v1` blobs.
 
 | Kept by the linker | Code | Rodata | Mutable data/BSS |
 | --- | ---: | ---: | ---: |

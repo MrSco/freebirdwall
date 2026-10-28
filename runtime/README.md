@@ -137,8 +137,9 @@ Service references: [adsb.fi API/terms](https://github.com/adsbfi/opendata/blob/
 Provider policies/availability can change; production bindings must display
 attribution, honor limits and avoid claiming complete route/schedule coverage.
 
-Device integration evidence and the current memory budget are recorded in
-[PROVIDER-INTEGRATION.md](../PROVIDER-INTEGRATION.md). These source adapters are
+Device integration evidence and the memory budget of that stage were recorded
+in the earlier stock-patching project's notes, which are not part of this
+repository. These source adapters are
 connected through the installed development hook but are not the selected feed.
 On October 19 the user directly confirmed community flight rows and airline
 images on the panel. Airport-route rendering remains untested because route
