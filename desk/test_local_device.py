@@ -1,4 +1,4 @@
-"""LAN client and desk boundaries against an isolated mock device. No saved keys."""
+"""LAN client boundaries against an isolated mock device. No saved keys."""
 import copy
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,13 +10,22 @@ import unittest
 from unittest.mock import patch
 import io
 
-import control
 import local_device
 
 TOKEN = 'a1' * 32
 CONNECTION = {'ip': '192.168.50.20', 'token': TOKEN}
 ROWS = [{'kind': 'iata', 'from': 'DJT', 'to': 'PBI'}]
 REAL_HTTP = http.client.HTTPConnection
+
+
+def clean(rows):
+    """The caller's alias check (Client.aliases/apply take one): a list of
+    {kind, from, to} strings, else ValueError."""
+    if not isinstance(rows, list) or not all(
+            isinstance(r, dict) and set(r) == {'kind', 'from', 'to'} and all(isinstance(v, str) for v in r.values())
+            for r in rows):
+        raise ValueError('rows')
+    return copy.deepcopy(rows)
 
 
 class MockDevice(BaseHTTPRequestHandler):
@@ -83,7 +92,6 @@ class MockDevice(BaseHTTPRequestHandler):
 class LocalDeviceTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.alias_path = Path(self.tmp.name) / 'aliases.json'
         self.device_path = Path(self.tmp.name) / 'device.json'
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), MockDevice)
         self.server.revision = 8
@@ -103,18 +111,12 @@ class LocalDeviceTests(unittest.TestCase):
             self.assertEqual((host, port), (CONNECTION['ip'], 8787))
             return REAL_HTTP('127.0.0.1', self.server.server_port, timeout=timeout)
 
-        self.patches = [patch.object(local_device.http.client, 'HTTPConnection', side_effect=mock_connection),
-                        patch.object(control, 'ALIASES_PATH', self.alias_path),
-                        patch.object(control, 'DEVICE_PATH', self.device_path),
-                        patch.object(control, '_session', None),
-                        patch.object(control, '_request', side_effect=AssertionError('cloud forbidden'))]
-        for p in self.patches:
-            p.start()
+        self.patch = patch.object(local_device.http.client, 'HTTPConnection', side_effect=mock_connection)
+        self.patch.start()
         self.client = local_device.Client(CONNECTION)
 
     def tearDown(self):
-        for p in reversed(self.patches):
-            p.stop()
+        self.patch.stop()
         self.server.shutdown()
         self.server.server_close()
         self.worker.join()
@@ -132,51 +134,51 @@ class LocalDeviceTests(unittest.TestCase):
         self.assertEqual(self.connections, [])
 
     def test_uppercase_key_is_normalized_before_authentication(self):
-        result = control.connect_device(CONNECTION['ip'], TOKEN.upper())
-        self.assertTrue(result['connected'])
-        self.assertEqual(local_device.load_connection(self.device_path), CONNECTION)
+        connection = local_device.credentials(CONNECTION['ip'], TOKEN.upper())
+        self.assertEqual(connection, CONNECTION)
+        self.assertTrue(local_device.Client(connection).status()['connected'])
+        for bad in ['a1' * 31, 'g1' * 32, None]:
+            with self.subTest(token=bad), self.assertRaises(local_device.DeviceError):
+                local_device.credentials(CONNECTION['ip'], bad)
 
-    def test_connect_stores_key_but_response_never_returns_it(self):
-        result = control.connect_device(**{'ip': CONNECTION['ip'], 'token': TOKEN})
-        self.assertTrue(result['connected'])
-        self.assertEqual(result['revision'], 8)
-        self.assertNotIn(TOKEN, json.dumps(result))
+    def test_connection_file_round_trip_is_private_and_exact(self):
+        self.assertIsNone(local_device.load_connection(self.device_path))
+        local_device.save_connection(self.device_path, {'ip': CONNECTION['ip'], 'token': TOKEN.upper()})
         self.assertEqual(local_device.load_connection(self.device_path), CONNECTION)
+        self.assertEqual(list(Path(self.tmp.name).iterdir()), [self.device_path])   # no temporary left behind
 
-    def test_failed_connect_preserves_previous_connection(self):
-        local_device.save_connection(self.device_path, CONNECTION)
-        previous = self.device_path.read_bytes()
+    def test_rejected_key_is_explained_without_the_key(self):
         self.server.error = 401
-        with self.assertRaisesRegex(local_device.DeviceError, 'key was rejected'):
-            control.connect_device(CONNECTION['ip'], 'b2' * 32)
-        self.assertEqual(self.device_path.read_bytes(), previous)
+        with self.assertRaisesRegex(local_device.DeviceError, 'key was rejected') as caught:
+            local_device.Client({'ip': CONNECTION['ip'], 'token': 'b2' * 32}).status()
+        self.assertNotIn('b2' * 32, str(caught.exception))
 
     def test_status_reports_actual_storage_revision_and_count(self):
-        self.assertEqual(control.device_status()['configured'], False)
-        local_device.save_connection(self.device_path, CONNECTION)
-        result = control.device_status()
-        self.assertEqual((result['revision'], result['alias_count']), (8, 1))
+        result = self.client.status()
+        self.assertEqual((result['revision'], result['alias_count'], result['storage_ready']), (8, 1, True))
         self.assertTrue(result['device_confirmed'])
         self.assertNotIn(TOKEN, json.dumps(result))
+        with self.assertRaisesRegex(local_device.DeviceError, 'No local device'):
+            local_device.Client(None)
 
-    def test_alias_read_never_replaces_pc_rules(self):
-        saved = control.save_aliases([], 0)
-        self.assertEqual(self.client.aliases(control.clean_alias_list)['aliases'], ROWS)
-        self.assertEqual(control.load_alias_document(), saved)
+    def test_alias_read_returns_the_device_rules(self):
+        result = self.client.aliases(clean)
+        self.assertEqual((result['revision'], result['aliases']), (8, ROWS))
+        self.server.rows = [{'kind': 'iata'}]
+        with self.assertRaisesRegex(local_device.DeviceError, 'invalid rename rules'):
+            self.client.aliases(clean)
 
-    def test_apply_increments_device_revision_independently_and_confirms_exact_rules(self):
-        local_device.save_connection(self.device_path, CONNECTION)
-        saved = control.save_aliases(ROWS, 0)
-        result = control.apply_device_aliases(1, 8)
-        self.assertEqual((result['revision'], result['aliases']), (9, ROWS))
+    def test_apply_increments_device_revision_and_confirms_exact_rules(self):
+        result = self.client.apply([], 8, clean)
+        self.assertEqual((result['revision'], result['aliases'], result['alias_count']), (9, [], 0))
         self.assertTrue(result['device_confirmed'])
-        self.assertEqual(control.load_alias_document(), saved)
+        self.assertEqual(self.server.rows, [])
         self.assertEqual([r[0] for r in self.server.requests], ['GET', 'PUT'])
         self.assertEqual(self.server.requests[-1][2]['If-Match'], '"8"')
 
-    def test_stale_browser_revision_never_sends_put(self):
+    def test_stale_revision_never_sends_put(self):
         with self.assertRaises(local_device.DeviceError) as caught:
-            self.client.apply([], 7, control.clean_alias_list)
+            self.client.apply([], 7, clean)
         self.assertEqual(caught.exception.status, 409)
         self.assertEqual([r[0] for r in self.server.requests], ['GET'])
         self.assertEqual(self.server.rows, ROWS)
@@ -184,23 +186,21 @@ class LocalDeviceTests(unittest.TestCase):
     def test_conflict_between_read_and_write_is_visible(self):
         self.server.put_error = 409
         with self.assertRaises(local_device.DeviceError) as caught:
-            self.client.apply([], 8, control.clean_alias_list)
+            self.client.apply([], 8, clean)
         self.assertEqual(caught.exception.status, 409)
         self.assertEqual(self.server.rows, ROWS)
 
-    def test_nvs_failure_does_not_claim_ack_or_lose_saved_rules(self):
-        local_device.save_connection(self.device_path, CONNECTION)
-        saved = control.save_aliases([], 0)
+    def test_nvs_failure_does_not_claim_a_save(self):
         self.server.put_error = 503
-        with self.assertRaisesRegex(local_device.DeviceError, 'No save confirmed'):
-            control.apply_device_aliases(1, 8)
-        self.assertEqual(control.load_alias_document(), saved)
+        with self.assertRaisesRegex(local_device.DeviceError, 'No save confirmed') as caught:
+            self.client.apply([], 8, clean)
+        self.assertEqual(caught.exception.status, 503)
         self.assertEqual(self.server.rows, ROWS)
 
     def test_wrong_ack_does_not_claim_device_confirmed(self):
         self.server.bad_ack = True
         with self.assertRaisesRegex(local_device.DeviceError, 'exact saved rules'):
-            self.client.apply(ROWS, 8, control.clean_alias_list)
+            self.client.apply(ROWS, 8, clean)
 
     def test_redirect_never_follows_and_response_details_are_sanitized(self):
         for code in [302, 401, 422, 500]:
@@ -213,16 +213,15 @@ class LocalDeviceTests(unittest.TestCase):
     def test_etag_required_and_numeric_revision_validation(self):
         self.server.etag = '"7"'
         with self.assertRaisesRegex(local_device.DeviceError, 'revision tag'):
-            self.client.aliases(control.clean_alias_list)
+            self.client.aliases(clean)
         for rev in [True, -1, 0x100000000, '8', None]:
             with self.subTest(rev=rev), self.assertRaises(local_device.DeviceError):
-                self.client.apply(ROWS, rev, control.clean_alias_list)
+                self.client.apply(ROWS, rev, clean)
 
-    def test_invalid_saved_revision_prevents_network_write(self):
-        local_device.save_connection(self.device_path, CONNECTION)
-        control.save_aliases(ROWS, 0)
-        with self.assertRaises(local_device.DeviceError):
-            control.apply_device_aliases(0, 8)
+    def test_exhausted_revision_never_writes(self):
+        with self.assertRaises(local_device.DeviceError) as caught:
+            self.client.apply(ROWS, local_device.MAX_REVISION, clean)
+        self.assertEqual(caught.exception.status, 409)
         self.assertEqual(self.connections, [])
 
     def test_offline_error_does_not_leak_address_key_or_exception(self):
@@ -264,79 +263,31 @@ class LocalDeviceTests(unittest.TestCase):
     def test_corrupt_credentials_do_not_leak_or_get_silently_overwritten(self):
         self.device_path.write_text(TOKEN)
         with self.assertRaises(local_device.DeviceError) as caught:
-            control.device_status()
+            local_device.load_connection(self.device_path)
         self.assertNotIn(TOKEN, str(caught.exception))
         self.assertEqual(self.device_path.read_text(), TOKEN)
 
-    def test_desk_endpoints_do_not_expose_keys_and_local_control_needs_no_cloud_session(self):
-        desk = ThreadingHTTPServer(('127.0.0.1', 0), control.Handler)
-        worker = threading.Thread(target=desk.serve_forever, daemon=True)
-        worker.start()
+    def test_settings_read_and_save_with_the_device_origin(self):
+        self.assertEqual(self.client.settings()['display_config']['brightness_percent'], 20)
+        doc = copy.deepcopy(self.server.settings)
+        doc['display_config']['brightness_percent'] = 45
+        saved = self.client.save_settings(doc)
+        self.assertEqual(saved['display_config']['brightness_percent'], 45)
+        self.assertEqual(self.server.settings, doc)
+        self.assertEqual(self.server.requests[-1][2]['Origin'], 'http://192.168.50.20:8787')
 
-        def request(method, path, data=None):
-            conn = REAL_HTTP('127.0.0.1', desk.server_port, timeout=3)
-            try:
-                conn.request(method, path, json.dumps(data) if data is not None else None,
-                             {'Content-Type': 'application/json'})
-                response = conn.getresponse()
-                return response.status, json.loads(response.read())
-            finally:
-                conn.close()
-
-        try:
-            code, body = request('POST', '/api/device/connect', CONNECTION)
-            self.assertEqual(code, 200)
-            self.assertNotIn(TOKEN, json.dumps(body))
-            code, body = request('GET', '/api/session')
-            self.assertEqual((code, body['ready'], body['source']), (200, True, 'local-device'))
-            code, body = request('GET', '/api/config')
-            self.assertEqual((code, body['config']['display_config']['brightness_percent']), (200, 20))
-            baseline = copy.deepcopy(body['config'])
-            updated = copy.deepcopy(baseline)
-            updated['display_config']['brightness_percent'] = 45
-            code, body = request('POST', '/api/config', {'config': updated, 'baseline': baseline})
-            self.assertEqual((code, body['config']['display_config']['brightness_percent']), (200, 45))
-            self.assertTrue(body['meta']['device_confirmed'])
-            code, body = request('GET', '/api/device/settings')
-            self.assertEqual((code, body['config']['display_config']['brightness_percent']), (200, 45))
-            code, body = request('GET', '/api/device/aliases')
-            self.assertEqual((code, body['aliases']), (200, ROWS))
-            control.save_aliases([], 0)
-            code, body = request('POST', '/api/device/aliases',
-                                 {'revision': 1, 'expected_device_revision': 8})
-            self.assertEqual((code, body['revision'], body['aliases']), (200, 9, []))
-            self.assertTrue(body['device_confirmed'])
-            code, body = request('POST', '/api/device/aliases',
-                                 {'revision': 1, 'expected_device_revision': 8})
-            self.assertEqual((code, body['device_confirmed']), (409, False))
-            self.server.error = 401
-            code, body = request('GET', '/api/device/status')
-            self.assertEqual(code, 200)
-            self.assertFalse(body['connected'])
-            self.assertFalse(body['device_confirmed'])
-            self.assertNotIn(TOKEN, json.dumps(body))
-        finally:
-            desk.shutdown()
-            desk.server_close()
-            worker.join()
-
-    def test_pairing_export_requires_explicit_same_origin_post(self):
-        local_device.save_connection(self.device_path, CONNECTION)
-        desk=ThreadingHTTPServer(('127.0.0.1',0),control.Handler)
-        worker=threading.Thread(target=desk.serve_forever,daemon=True);worker.start()
-        def request(method,extra=None):
-            conn=REAL_HTTP('127.0.0.1',desk.server_port,timeout=3)
-            try:
-                headers={'Content-Type':'application/json',**(extra or {})}
-                conn.request(method,'/api/device/pairing','{}' if method=='POST' else None,headers)
-                response=conn.getresponse();return response.status,json.loads(response.read())
-            finally:conn.close()
-        try:
-            for method,headers in [('GET',{}),('POST',{}),('POST',{'X-Flightwall-Action':'export-pairing','Origin':'http://evil.example'})]:
-                code,body=request(method,headers);self.assertNotEqual(code,200);self.assertNotIn(TOKEN,json.dumps(body))
-            code,body=request('POST',{'X-Flightwall-Action':'export-pairing','Origin':'http://127.0.0.1:'+str(desk.server_port)})
-            self.assertEqual(code,200);self.assertEqual(body,{'schema_version':1,**CONNECTION})
-        finally:desk.shutdown();desk.server_close();worker.join()
+    def test_settings_shape_and_size_are_checked_before_sending(self):
+        sent = len(self.server.requests)
+        for bad in [None, {'display_config': {}}, {'display_config': [], 'request_config': {}}]:
+            with self.subTest(doc=bad), self.assertRaises(local_device.DeviceError):
+                self.client.save_settings(bad)
+        with self.assertRaises(local_device.DeviceError) as caught:
+            self.client.save_settings({'display_config': {'x': 'y' * 4096}, 'request_config': {}})
+        self.assertEqual(caught.exception.status, 413)
+        self.assertEqual(len(self.server.requests), sent)
+        self.server.settings = {'display_config': {}}
+        with self.assertRaisesRegex(local_device.DeviceError, 'invalid settings'):
+            self.client.settings()
 
 
 if __name__ == '__main__':
