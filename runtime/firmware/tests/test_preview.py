@@ -125,6 +125,13 @@ def scenarios():
     scene('progress', settings(owned={'progress_bar': True}, flight_display_speed='fast'), prog, *logos,
           until=30000, dumps=tuple(range(0, 30000, 1500)))
     scene('progress_off', settings(flight_display_speed='fast'), prog, *logos, dumps=(0,))
+    # a logo that arrives after its card is up (the page fetches it): drawn at once, not a rotation later
+    late = [settings(), fl]
+    run_steps(late, 0, 501)
+    late += [{'dump': 'logo_late_0'}] + logos
+    run_steps(late, 501, 701)
+    late.append({'dump': 'logo_late_1'})
+    out['logo_late'] = late
     return out
 
 
@@ -150,6 +157,7 @@ def main():
     node = shutil.which('node') or sys.exit('Node.js is required')
     checks = 0
     bars = set()
+    frames = {}
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         if build_preview.find_zig(a.zig):
@@ -181,6 +189,7 @@ def main():
                     sys.exit('FAIL %s: %d pixels differ' % (dump, diff))
                 if not any(hb[i] or hb[i + 1] or hb[i + 2] for i in range(0, len(hb), 4)) and 'blank' not in dump:
                     sys.exit('FAIL %s: nothing drawn' % dump)
+                frames[dump] = hb
                 if dump.startswith('progress'):
                     row = [tuple(hb[(62 * 128 + x) * 4:(62 * 128 + x) * 4 + 3]) for x in range(128)]
                     green = sum(1 for c in row if c == (0, 255, 0))
@@ -193,6 +202,13 @@ def main():
                 if a.keep:
                     a.keep.mkdir(parents=True, exist_ok=True)
                     led_png(hb, a.keep / (dump + '.png'))
+    if (FIXTURES / 'JBU.png').exists():
+        def logo_area(rgba):                    # the logo's corner, left of the three text rows
+            return [rgba[(y * 128 + x) * 4:(y * 128 + x) * 4 + 3] for y in range(38) for x in range(36)]
+        before, after = logo_area(frames['logo_late_0']), logo_area(frames['logo_late_1'])
+        if before == after or after != logo_area(frames['default_0']):
+            sys.exit('FAIL logo_late: a logo that came after its card was not drawn on that card')
+        checks += 1
     if bars != {47, 124, None}:                     # 38 % and 100 % of 124 pixels, and a flight with no bar
         sys.exit('FAIL progress: bars seen %r' % sorted(bars, key=str))
     print('PASS: %d preview checks (WebAssembly and desktop frames identical%s)' % (

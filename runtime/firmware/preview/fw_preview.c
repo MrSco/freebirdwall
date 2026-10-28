@@ -115,7 +115,10 @@ EXPORT(pv_logo) void pv_logo(const char *al, const char *ac, const uint8_t *png,
         if (fw_logo_decode(dec, png, len, fw_logo_side_for_box(box->w, box->h), &l->logo) == FW_LOGO_OK) l->state = 1;
         free(dec);
     }
-    if (!strcmp(al, s_shown_al) && !strcmp(ac, s_shown_ac)) s_logo_arrived = 1;
+    if (!strcmp(al, s_shown_al) && !strcmp(ac, s_shown_ac)) {   /* the card on show: draw it again with it */
+        s_shown_logo = l->state == 1 ? &l->logo : NULL;
+        s_logo_arrived = 1;
+    }
 }
 
 /* ------------------------------------------------------------ aliases */
