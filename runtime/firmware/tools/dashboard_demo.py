@@ -42,13 +42,14 @@ SETTINGS = {
         'sleep_time': {'start': '23:00', 'end': '06:30', 'sleep_brightness_percent': 0},
     },
     'request_config': {
-        'radius_requests': [{'latitude': 40.6413, 'longitude': -73.7781, 'radius_km': 15, 'name': 'JFK'}],
+        'radius_requests': [{'latitude': 40.6413, 'longitude': -73.7781, 'radius_km': 15, 'name': 'JFK'},
+                            {'latitude': 40.7769, 'longitude': -73.8740, 'radius_km': 8, 'name': 'LaGuardia'}],
         'data_filters': {'show_light_ac': True, 'show_heli_ac': True, 'show_commercial_ac': True,
                          'show_smalljet_ac': True, 'show_other_ac': True, 'show_na_routes': True},
         'tracked_flights': [{'flight_number': 'B6123', 'auto_remove': True, 'show_distance_travelled': True,
                              'show_metrics': True, 'created_at': '2026-10-20T12:00:00.000000+00:00'}],
     },
-    'owned_config': {'flight_source': 'community', 'follow_app': True, 'scroll_speed': 'normal'},
+    'owned_config': {'flight_source': 'community', 'follow_app': True, 'scroll_speed': 'normal', 'progress_bar': True},
 }
 ALIASES = {'revision': 1, 'aliases': [{'kind': 'iata', 'from': 'JFK', 'to': 'Kennedy'}]}
 state = {'revision': 7, 'code_until': 0.0}
