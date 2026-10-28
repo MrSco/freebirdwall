@@ -156,7 +156,7 @@ static esp_err_t error(httpd_req_t *req, int status, const char *why){
     static unsigned refused;
     snprintf(extra, sizeof extra, "\"path\":\"%.24s\",\"status\":%d,\"why\":\"%.40s\",\"n\":%u", req->uri, status, why,
              ++refused);
-    if (refused <= 3 || refused % 100 == 0) fw_mem_report("update_refused", extra);   /* the 4 KiB log holds hours */
+    if (refused <= 3 || refused % 100 == 0) fw_mem_report("update_refused", extra);   /* the 7 KiB log holds hours */
     return reply(req, status, body);
 }
 
@@ -346,6 +346,103 @@ static esp_err_t put_firmware(httpd_req_t *req){
     return ESP_OK;
 }
 
+/* The vendor firmware, by its app description: an ESP32-S3 image whose
+ * project is the vendor's (as the installer's slotKind reads it). */
+static bool vendor_image(const uint8_t *p, size_t n){
+    static const char project[] = "arduino-lib-builder";
+    return n >= 112 && p[0] == 0xe9 && (p[12] | p[13] << 8) == 9 && get32(p + 32) == 0xabcd5432 &&
+           !memcmp(p + 80, project, sizeof project);
+}
+
+static bool recv_full(httpd_req_t *req, uint8_t *p, size_t n){
+    int idle = 0;
+    for (size_t got = 0; got < n;) {
+        int r = httpd_req_recv(req, (char *)p + got, n - got);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT && ++idle <= 6) continue;
+        if (r <= 0) return false;
+        idle = 0;
+        got += (size_t)r;
+    }
+    return true;
+}
+
+/* PUT /v1/firmware/spare: the vendor firmware, unchanged, into the slot that
+ * is not running, as an install leaves the wall (UPDATES.md "The vendor
+ * firmware in the spare slot"). What starts does not change: the installer's
+ * "Start the vendor firmware again" starts it over USB. Only the vendor's
+ * image (vendor_image, before anything is written); the transfer hash, the
+ * SDK's image verification and a read-back as for an upload. */
+static esp_err_t put_spare(httpd_req_t *req){
+    static uint8_t buf[2048];
+    char type[40], sha_hex[70], body[256], h[65];
+    uint8_t sha[32], got[32];
+    OwnerSha256 hs;
+    size_t left, n;
+    bool ok;
+    int g = gate(req);
+    if (g) return error(req, g, "not allowed");
+    if (!s_ready) return error(req, 503, "not ready");
+    if ((g = if_match(req))) return error(req, g, g == 409 ? "firmware changed" : "If-Match required");
+    if (s_pending) return error(req, 409, "this image is not confirmed yet");
+    if (httpd_req_get_hdr_value_str(req, "Content-Type", type, sizeof type) != ESP_OK ||
+        strcmp(type, "application/octet-stream") != 0)
+        return error(req, 415, "binary body required");
+    if (httpd_req_get_hdr_value_len(req, "X-Firmware-SHA256") != 64 ||
+        httpd_req_get_hdr_value_str(req, "X-Firmware-SHA256", sha_hex, sizeof sha_hex) != ESP_OK ||
+        !parse_hex32(sha_hex, 64, sha))
+        return error(req, 400, "X-Firmware-SHA256 required");
+    s_target = esp_ota_get_next_update_partition(NULL);
+    if (!app_slot(s_target) || s_target == s_running || req->content_len < sizeof buf ||
+        req->content_len > s_target->size)
+        return error(req, 413, "image size");
+    if (s_busy) return error(req, 409, "busy");
+    if (!recv_full(req, buf, sizeof buf)) return error(req, 400, "upload cut off");
+    if (!vendor_image(buf, sizeof buf)) return error(req, 422, "not the vendor firmware");
+    s_busy = true;
+    fw_mem_report("spare_upload_start", NULL);
+    owner_sha256_init(&hs);
+    s_written = 0;
+    s_length = (uint32_t)req->content_len;
+    ok = current() && esp_ota_begin(s_target, OTA_WITH_SEQUENTIAL_WRITES, &s_ota) == ESP_OK;
+    s_ota_open = ok;
+    for (n = sizeof buf, left = req->content_len; ok;) {
+        owner_sha256_update(&hs, buf, n);
+        ok = esp_ota_write(s_ota, buf, n) == ESP_OK;
+        s_written += (uint32_t)n;
+        left -= n;
+        if (!ok || !left) break;
+        int r = 0;
+        for (int idle = 0; (r = httpd_req_recv(req, (char *)buf, left < sizeof buf ? left : sizeof buf)) ==
+                           HTTPD_SOCK_ERR_TIMEOUT && ++idle <= 6;)
+            ;
+        ok = r > 0;
+        n = ok ? (size_t)r : 0;
+    }
+    if (ok) {
+        owner_sha256_final(&hs, got);
+        ok = !memcmp(got, sha, 32);
+    }
+    if (ok) {
+        s_ota_open = false;
+        ok = esp_ota_end(s_ota) == ESP_OK &&                                  /* SDK image verification */
+             hash_slot(s_target, s_length, got) && !memcmp(got, sha, 32);    /* read-back */
+    }
+    if (s_ota_open) esp_ota_abort(s_ota);
+    s_ota_open = false;
+    s_busy = false;
+    {
+        char extra[48];
+        snprintf(extra, sizeof extra, "\"ok\":%s,\"bytes\":%u", ok ? "true" : "false", (unsigned)s_written);
+        fw_mem_report("spare_upload_end", extra);
+    }
+    if (!ok) return error(req, 422, "image rejected");
+    hex32(h, sha);
+    snprintf(body, sizeof body,
+             "{\"api_version\":1,\"schema_version\":1,\"stored\":true,\"sha256\":\"%s\",\"bytes\":%u,\"slot\":\"%s\"}",
+             h, (unsigned)req->content_len, slot_name(s_target));
+    return reply(req, 200, body);
+}
+
 /* ------------------------------------------------------------ confirm / switch */
 
 static esp_err_t post_confirm(httpd_req_t *req){
@@ -406,6 +503,7 @@ bool fw_owner_update_start(bool display_ok){
         {.uri = "/v1/firmware", .method = HTTP_PUT, .handler = put_firmware},
         {.uri = "/v1/firmware/confirm", .method = HTTP_POST, .handler = post_confirm},
         {.uri = "/v1/firmware/switch", .method = HTTP_POST, .handler = post_switch},
+        {.uri = "/v1/firmware/spare", .method = HTTP_PUT, .handler = put_spare},
         {.uri = "/v1/log", .method = HTTP_GET, .handler = get_log},
     };
     char extra[96];

@@ -1,9 +1,9 @@
 # Updates and switching firmware
 
 The owned firmware serves the owner's Wi-Fi update service on port 8787 with
-the **same keyed protocol as the owner-modified stock firmware**
-(`desk/OTA-UPDATES.md`), so the desk uploads to either one the
-same way (`main/owner_update.c`).
+the **same keyed protocol as the owner-modified stock firmware** of the
+project this one grew from, so the desk (`desk/firmware_device.py`) uploads to
+either one the same way (`main/owner_update.c`, `shared/owner_ota.c`).
 
 | Route | What it does |
 | --- | --- |
@@ -11,6 +11,7 @@ same way (`main/owner_update.c`).
 | `PUT /v1/firmware` | upload into the other slot: binary body, `If-Match` with the running hash, `X-Firmware-SHA256` |
 | `POST /v1/firmware/confirm` | keep a pending image (see below) |
 | `POST /v1/firmware/switch` | owned only: boot the image in the other slot |
+| `PUT /v1/firmware/spare` | owned only: the vendor firmware, unchanged, into the other slot; what starts does not change (below) |
 | `GET /v1/log` | owned only: the recent status lines (`FWSTATE`, `FWMEM`), oldest first, as plain text; the last crash's `FWPANIC` line first, under `--- last crash, in boot N ---` |
 
 Every route needs `Authorization: Bearer <device key>` — the same 32-byte key
@@ -44,6 +45,19 @@ command sends (`firmware_device.Client.switch_slot`); without it stock
 returns to the owned firmware by itself.
 
 **Back to owned** from stock: upload the owned `candidate.bin` as usual.
+
+**The vendor firmware in the spare slot.** A Wi-Fi update goes into the slot
+that is not running, so it replaces a vendor firmware kept there (the USB
+installer keeps it: it updates in place, installer/src/flow.js `targetSlot`).
+`py desk/firmware_cli.py spare <vendor app .bin>` puts it back: the vendor's
+application image, unchanged (for example the slot it booted from in the
+installer's backup, cut to the image's length), into the slot not running.
+The board refuses anything whose app description does not name the vendor's
+project (`arduino-lib-builder`) before it writes, then checks the transfer
+SHA-256, the SDK's image verification and a read-back, as for an upload. The
+boot choice stays: the installer's **Start the vendor firmware again** (USB)
+starts it. Not `switch` from the desk: the unmodified vendor firmware has no
+Wi-Fi update service, so only USB brings FreeBirdWall back from it.
 
 **Log over Wi-Fi.** Every status line the firmware prints (`FWSTATE`,
 `FWMEM`; never secrets) is also kept in a 7 KiB ring in RTC memory

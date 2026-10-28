@@ -13,7 +13,7 @@ import local_device
 
 MAX_IMAGE = 0x2c0000
 MAX_RESPONSE = 16384
-LOG_MAX = 8192            # the firmware keeps 4 KiB
+LOG_MAX = 8192            # the firmware keeps 7 KiB and the last crash (wall_log.c)
 DESCRIPTOR = b'FWOTA1\0\0'
 POLL_SECONDS = 60
 DeviceError = local_device.DeviceError
@@ -32,8 +32,32 @@ def validate_image(image, token):
     through the checksum. No partition dumps, trailing padding, or other board
     keys are accepted. The board repeats these checks before selecting a slot.
     """
+    descriptors = _application(image)
+    expected = DESCRIPTOR + struct.pack('<I', 1) + bytes.fromhex(token)
+    if len(descriptors) != 1 or not hmac.compare_digest(descriptors[0], expected):
+        raise DeviceError('Choose OTA-capable owner firmware built for this device key.', 400)
+    return hashlib.sha256(image).hexdigest()
+
+
+VENDOR_PROJECT = b'arduino-lib-builder\0'
+
+
+def validate_vendor_image(image):
+    """The vendor firmware, unchanged, for the spare slot (store_spare): the
+    same application checks, no owner descriptor, and the vendor's project
+    name in the app description (as the installer's slotKind reads it)."""
+    if _application(image):
+        raise DeviceError('This is owner firmware; upload it as an update instead.', 400)
+    if (len(image) < 112 or struct.unpack_from('<I', image, 32)[0] != 0xabcd5432
+            or image[80:80 + len(VENDOR_PROJECT)] != VENDOR_PROJECT):
+        raise DeviceError('Choose the vendor firmware application (from your backup), unchanged.', 400)
+    return hashlib.sha256(image).hexdigest()
+
+
+def _application(image):
+    """Checks an ESP32-S3 application image; returns its keyed descriptors."""
     if not isinstance(image, bytes) or not 24 <= len(image) <= MAX_IMAGE:
-        raise DeviceError('Choose an owner firmware application .bin within the slot size.', 400)
+        raise DeviceError('Choose a firmware application .bin within the slot size.', 400)
     if (image[0] != 0xe9 or not 1 <= image[1] <= 16
             or struct.unpack_from('<H', image, 12)[0] != 9 or image[23] != 1):
         raise DeviceError('Firmware must be an ESP32-S3 application with an appended SHA-256.', 400)
@@ -62,10 +86,7 @@ def validate_image(image, token):
         raise DeviceError('Firmware length, padding, or ESP checksum is invalid.', 400)
     if not hmac.compare_digest(hashlib.sha256(image[:footer + 1]).digest(), image[footer + 1:]):
         raise DeviceError('Firmware appended SHA-256 is invalid.', 400)
-    expected = DESCRIPTOR + struct.pack('<I', 1) + bytes.fromhex(token)
-    if len(descriptors) != 1 or not hmac.compare_digest(descriptors[0], expected):
-        raise DeviceError('Choose OTA-capable owner firmware built for this device key.', 400)
-    return hashlib.sha256(image).hexdigest()
+    return descriptors
 
 
 class Client:
@@ -257,3 +278,29 @@ class Client:
                 time.sleep(min(1, remaining))
         return {'switched': True, 'device_confirmed': False, 'target_slot': target, 'sha256': other,
                 'message': 'Switch accepted, but the other firmware is not confirmed. Read firmware status.'}
+
+    def store_spare(self, image, expected):
+        """Put the vendor firmware, unchanged, into the slot that is not running
+        (owned firmware's PUT /v1/firmware/spare), next to FreeBirdWall as an
+        install leaves it: what starts does not change, and the installer's
+        "Start the vendor firmware again" (USB) can start it. The vendor
+        firmware has no Wi-Fi update service, so it is not started from here.
+        One PUT, never repeated after an ambiguous disconnect."""
+        expected = sha256(expected)
+        digest = validate_vendor_image(image)
+        current = self.status()
+        if current['running_sha256'] != expected:
+            raise DeviceError('Firmware changed. Read firmware status before uploading again.', 409)
+        if current['update_busy'] or current['pending_confirmation'] or current['running_slot'] != current['boot_slot']:
+            raise DeviceError('A firmware update is pending. Wait and read firmware status.', 409)
+        if len(image) > current['partition_size']:
+            raise DeviceError('Firmware is larger than the device application slot.', 400)
+        target = 'app0' if current['running_slot'] == 'app1' else 'app1'
+        receipt = self._request('PUT', image, expected, digest, timeout=60, path='/v1/firmware/spare')
+        if (receipt.get('stored') is not True or receipt.get('sha256') != digest
+                or receipt.get('bytes') != len(image) or receipt.get('slot') != target):
+            raise DeviceError('Spare-slot receipt is invalid. Read firmware status; do not retry automatically.')
+        after = self.status()
+        if after['running_sha256'] != expected or after['boot_slot'] != current['running_slot']:
+            raise DeviceError('The firmware that starts changed unexpectedly. Read firmware status.')
+        return {'stored': True, 'slot': target, 'sha256': digest, 'bytes': len(image), 'firmware': after}

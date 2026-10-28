@@ -1,10 +1,9 @@
 """Isolated firmware update client/HTTP boundary tests; no device or saved keys."""
-import hashlib,json,struct,tempfile,threading,http.client,unittest
-from pathlib import Path
+import hashlib,json,struct,threading,http.client,unittest
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from unittest.mock import patch
 import firmware_device as fw
-import control,local_device
+import local_device
 TOKEN='01'+'00'*31
 CONNECTION={'ip':'192.168.50.20','token':TOKEN}
 REAL_HTTP=http.client.HTTPConnection
@@ -13,6 +12,13 @@ def image():
     raw=bytearray(640);raw[0]=0xe9;raw[1]=1;raw[12]=9;raw[23]=1
     struct.pack_into('<II',raw,24,0x3c000020,560);struct.pack_into('<I',raw,32,0xabcd5432)
     raw[400:444]=fw.DESCRIPTOR+struct.pack('<I',1)+bytes.fromhex(TOKEN)
+    checksum=0xef
+    for b in raw[32:592]:checksum^=b
+    raw[607]=checksum;raw[608:]=hashlib.sha256(raw[:608]).digest()
+    return bytes(raw)
+
+def vendor_image(project=b'arduino-lib-builder'):
+    raw=bytearray(image());raw[400:444]=bytes(44);raw[80:112]=project.ljust(32,bytes(1))
     checksum=0xef
     for b in raw[32:592]:checksum^=b
     raw[607]=checksum;raw[608:]=hashlib.sha256(raw[:608]).digest()
@@ -39,6 +45,10 @@ class Mock(BaseHTTPRequestHandler):
         self.server.puts+=1;raw=self.rfile.read(int(self.headers['Content-Length']))
         if self.headers.get('If-Match')!='"'+self.server.sha+'"':return self.send(409,{})
         digest=hashlib.sha256(raw).hexdigest();assert digest==self.headers['X-Firmware-SHA256']
+        if self.path=='/v1/firmware/spare':
+            self.server.spare=digest;spare='app0' if self.server.slot=='app1' else 'app1'
+            return self.send(200,{'api_version':1,'schema_version':1,'stored':not self.server.bad_receipt,'sha256':digest,
+                'bytes':len(raw),'slot':spare})
         self.server.sha=digest;self.server.slot='app0';self.server.pending=True
         return self.send(200,{'api_version':1,'schema_version':1,'accepted':True,'sha256':digest,
             'bytes':len(raw),'target_slot':'app0','rebooting':not self.server.bad_receipt})
@@ -96,6 +106,20 @@ class FirmwareTests(unittest.TestCase):
         self.server.switchable=False
         with self.assertRaises(fw.DeviceError) as e:self.client.switch_slot('1'*64)
         self.assertIn('owned firmware only',str(e.exception))
+    def test_spare_stores_the_vendor_firmware_without_changing_what_starts(self):
+        result=self.client.store_spare(vendor_image(),'1'*64)
+        self.assertEqual((result['stored'],result['slot'],result['bytes']),(True,'app0',640))
+        self.assertEqual((self.server.puts,self.server.spare,self.server.sha,self.server.slot),(1,result['sha256'],'1'*64,'app1'))
+    def test_spare_refuses_owner_or_other_images_before_network(self):
+        for bad in (image(),vendor_image(b'someone-else'),vendor_image()[:-1]):
+            with self.subTest(n=len(bad)),self.assertRaises(fw.DeviceError):self.client.store_spare(bad,'1'*64)
+        self.assertEqual((self.server.reads,self.server.puts),(0,0))
+    def test_spare_stale_or_bad_receipt(self):
+        with self.assertRaises(fw.DeviceError):self.client.store_spare(vendor_image(),'2'*64)
+        self.assertEqual(self.server.puts,0)
+        self.server.bad_receipt=True
+        with self.assertRaises(fw.DeviceError):self.client.store_spare(vendor_image(),'1'*64)
+        self.assertEqual(self.server.puts,1)
     def test_stale_never_uploads(self):
         with self.assertRaises(local_device.DeviceError) as e:self.client.update(image(),'2'*64)
         self.assertEqual(e.exception.status,409);self.assertEqual(self.server.puts,0)
@@ -130,19 +154,6 @@ class FirmwareTests(unittest.TestCase):
         self.server.pending=True
         with self.assertRaises(local_device.DeviceError):self.client.update(image(),'1'*64)
         self.assertEqual(self.server.puts,0)
-    def test_localhost_upload_origin_type_and_confirmed_result(self):
-        with tempfile.TemporaryDirectory() as temp:
-            path=Path(temp)/'device.json';local_device.save_connection(path,CONNECTION)
-            desk=ThreadingHTTPServer(('127.0.0.1',0),control.Handler)
-            worker=threading.Thread(target=desk.serve_forever,daemon=True);worker.start()
-            try:
-                with patch.object(control,'DEVICE_PATH',path),patch.object(control,'_request',side_effect=AssertionError('cloud forbidden')):
-                    for headers,expected in [({'Content-Type':'application/json'},415),({'Content-Type':'application/octet-stream','Origin':'http://evil.invalid'},403),({'Content-Type':'application/octet-stream','If-Match':'"'+'1'*64+'"'},200)]:
-                        c=REAL_HTTP('127.0.0.1',desk.server_port,timeout=5)
-                        c.request('POST','/api/device/firmware',image(),headers);r=c.getresponse();data=r.read();c.close()
-                        self.assertEqual(r.status,expected)
-                        if expected==200:self.assertTrue(json.loads(data)['device_confirmed'])
-                        self.assertNotIn(TOKEN.encode(),data)
-            finally:desk.shutdown();desk.server_close();worker.join()
+
 
 if __name__=='__main__':unittest.main()

@@ -199,7 +199,7 @@ mode with only Wi-Fi. Plug in USB, open the installer, and use **Start the vendo
 |---|---|
 | `runtime/firmware/` | The firmware (ESP-IDF 4.4.7). Start with its [README](runtime/firmware/README.md); design notes are in `FEED.md`, `SETTINGS.md`, `SYNC.md`, `UPDATES.md` and the other documents there. |
 | `installer/` | The USB installer. `py installer/tools/build_installer.py` builds `dist/freebirdwall-installer.html` from the keepable build and `publish_site.py` puts it on the website (`docs/`, served by GitHub Pages); `node installer/tests/test_installer.mjs` runs its tests; add `#demo` to the page's address to try it on a pretend wall. |
-| `desk/` | Desk tools: Wi-Fi updates, status and the wall's log (`py desk/firmware_cli.py status\|log`), with your wall's address and key in `desk/device.json` (never committed). |
+| `desk/` | Desk tools for your own wall over Wi-Fi: status, the log, updates and the vendor firmware back into the spare slot (`py desk/firmware_cli.py status\|log\|update\|spare`), with your wall's address and key in `desk/device.json` (never committed). Tests: `py -m unittest discover desk`. |
 | `shared/` | Code the firmware and the desk share: the update checker, SHA-256, airport names and the pinned TLS roots. |
 | `runtime/net/`, `runtime/src/` | The source-built HTTPS client and the community-feed reader, with their own tests. |
 
