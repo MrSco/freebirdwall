@@ -5,7 +5,9 @@
 **FreeBirdWall** is free firmware for the **FlightWall mini**, the LED panel that shows the planes flying over your home. It
 keeps everything the wall already does, needs no subscription, and adds:
 
-- **A dashboard on your phone.** Change every setting from any phone or computer on your Wi-Fi.
+- **A dashboard on your phone.** Change every setting from any phone or computer on your Wi-Fi, with a **live preview** of
+  the wall as you go, and the areas it watches **on a map**.
+- **Progress bars.** Each flight can show how far it is between its airports, along the bottom of the wall.
 - **Games on the wall.** Play [Pong and Breakout](#play-games-on-the-wall) on the LEDs, with your phone as the controller. Two phones can play Pong against each other.
 - **Free flight data.** Choose the community services ([adsb.fi](https://adsb.fi) and [adsbdb](https://www.adsbdb.com)) instead of the FlightWall service if you like.
 - **Your trips on the wall (Sync).** Add your flights or import a calendar file, and the wall shows the trip and follows the plane while it is in the air.
@@ -88,8 +90,8 @@ sign in up to four browsers this way.
 
 | | |
 |---|---|
-| <img src="docs/images/dashboard-display.jpg" alt="Display settings" width="260"> | **Display:** what each flight shows, brightness and sleep hours, and how fast long names scroll. **Clock:** time zones, 12 or 24 hours, and up to two extra cities. **Airports:** rename airports the way you say them ("Kennedy" instead of "John F Kennedy Intl"). |
-| <img src="docs/images/dashboard-flights.jpg" alt="Flight settings" width="260"> | **Flights:** where flight data comes from (the FlightWall service or the free community services), the areas the wall watches, which aircraft to show, and **tracked flights**: flights followed wherever they are. |
+| <img src="docs/images/dashboard-display.jpg" alt="Display settings, with the live preview of the wall" width="260"> | **Display:** a live preview of the wall, what each flight shows, brightness and sleep hours, and how fast long names scroll. **Clock:** time zones, 12 or 24 hours, and up to two extra cities. **Airports:** rename airports the way you say them ("Kennedy" instead of "John F Kennedy Intl"). |
+| <img src="docs/images/dashboard-flights.jpg" alt="The areas the wall watches, on a map" width="260"> | **Flights:** where flight data comes from (the FlightWall service or the free community services), the areas the wall watches (on a map), which aircraft to show, and **tracked flights**: flights followed wherever they are. |
 | <img src="docs/images/dashboard-sync.jpg" alt="Sync" width="260"> | **Sync:** your own trips. Add a flight, or import a calendar (`.ics`) file from a crew or calendar app. The wall counts down to departure, follows the plane in the air, shows what is next, and can show a message for home. |
 | <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flights seen today, the top airlines, the last 48 hours and the last 31 days. **Games:** see [below](#play-games-on-the-wall). **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
 
@@ -99,6 +101,8 @@ flights (or sample ones when none are nearby).
 
 **Progress bars.** Turn on **Progress bar** under Display and each flight shows how far it is between its airports, like
 tracked flights do.
+
+<img src="docs/images/wall-progress.jpg" alt="A Delta flight from Atlanta to Kennedy with a progress bar about two thirds full along the bottom" width="480">
 
 **Areas on a map.** Your areas show as circles on a map. Search for a place or tap the map to put an area there, drag its
 pin to move it, and set its size with the slider. No more typing coordinates (you still can, under **Coordinates**).
