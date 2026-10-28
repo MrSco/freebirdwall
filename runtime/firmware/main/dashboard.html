@@ -552,10 +552,10 @@ function pvText(p){var m=new Uint8Array(PV.mod.memory.buffer),e=p;while(m[e])e++
 function pvBoot(){if(PV.mod||PV.failed||PV.loading)return;PV.loading=true;
  var stub={fd_prestat_get:function(){return 8},fd_prestat_dir_name:function(){return 8},proc_exit:function(){throw new Error('preview stopped')},
   random_get:function(p,n){crypto.getRandomValues(new Uint8Array(PV.mod.memory.buffer,p,n));return 0}};
- (window.WebAssembly?fetch('/preview.wasm'):Promise.reject()).then(function(r){if(!r.ok)throw new Error();return r.arrayBuffer()})
+ (window.WebAssembly?fetch('/preview.wasm'):Promise.reject()).then(function(r){if(r.status===503)throw 'later';if(!r.ok)throw new Error();return r.arrayBuffer()})
  .then(function(b){return WebAssembly.instantiate(b,{wasi_snapshot_preview1:stub})})
- .then(function(r){PV.mod=r.instance.exports;PV.mod._initialize();PV.t0=performance.now();pvSync();pvFlights()})
- .catch(function(){PV.failed=true;pvNote()}).then(function(){PV.loading=false})}
+ .then(function(r){PV.later=false;PV.mod=r.instance.exports;PV.mod._initialize();PV.t0=performance.now();pvSync();pvFlights()})
+ .catch(function(e){if(e==='later'){PV.later=true;setTimeout(pvBoot,3000)}else PV.failed=true;pvNote()}).then(function(){PV.loading=false})}
 function pvMake(){var c=document.createElement('canvas'),m=document.createElement('canvas'),x,y,i;
  c.width=m.width=1024;c.height=m.height=512;c.className='pv';c.setAttribute('role','img');c.setAttribute('aria-label','Preview of the wall');
  PV.el=c;PV.ctx=c.getContext('2d');PV.small=document.createElement('canvas');PV.small.width=128;PV.small.height=64;PV.sctx=PV.small.getContext('2d');PV.img=PV.sctx.createImageData(128,64);
@@ -583,7 +583,7 @@ function pvLogo(k){var al=k.split('|')[0],ac=k.split('|')[1]||'';
 /* what the note under the picture says, and how dim the picture is */
 function pvNote(){var n=$('#pv-note');if(!n)return;
  if(PV.failed){n.textContent='The preview needs a newer browser.';return}
- if(!PV.mod){n.textContent='Loading the preview…';return}
+ if(!PV.mod){n.textContent=PV.later?'The wall is still starting up; the preview follows in a moment.':'Loading the preview…';return}
  var m=PV.mod,on=m.pv_power(0),pct=m.pv_power(1)||100,a=m.pv_power(3),b=m.pv_power(4),now=m.pv_power(6),
   asleep=m.pv_power(2)&&now>=0&&(a<b?now>=a&&now<b:now>=a||now<b),t=[];
  if(asleep)pct=m.pv_power(5);

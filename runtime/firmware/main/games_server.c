@@ -15,6 +15,7 @@
 #include "esp_rom_crc.h"
 #include "fw_arcade.h"
 #include "memory_probe.h"
+#include "route_probe.h"
 #include "owned_settings.h"
 #include "dashboard_api.h"
 #include "cJSON.h"
@@ -233,6 +234,11 @@ static esp_err_t preview_handler(httpd_req_t *req){
     httpd_resp_set_hdr(req, "ETag", etag);
     if (httpd_req_get_hdr_value_str(req, "If-None-Match", seen, sizeof seen) == ESP_OK && !strcmp(seen, etag)) {
         httpd_resp_set_status(req, "304 Not Modified");
+        return httpd_resp_send(req, NULL, 0);
+    }
+    if (fw_boot_probe_pending()) {      /* not while the startup TLS probe needs the heap: the page asks again */
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_hdr(req, "Retry-After", "3");
         return httpd_resp_send(req, NULL, 0);
     }
     httpd_resp_set_type(req, "application/wasm");

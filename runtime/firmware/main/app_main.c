@@ -101,6 +101,9 @@ static bool sync_clock(void){
     return fw_esp_wall_clock_valid();
 }
 
+static volatile bool s_starting=true;
+bool fw_boot_probe_pending(void){ return s_starting; }
+
 static void __attribute__((unused)) probe_task(void *arg){   /* unused in Wi-Fi test builds */
     (void)arg;
     fw_mem_report("probe_start",NULL);
@@ -208,6 +211,7 @@ void app_main(void){
         }
     }
 
+    s_starting=false;   /* the probe ran or was skipped (fw_boot_probe_pending) */
     snprintf(extra,sizeof extra,"\"probe_ok\":%s,\"wifi_attempts\":%u,\"display_ok\":%s,"
              "\"panel_frames\":%u,\"panel_stack_free\":%u",
              s_probe_ok?"true":"false",fw_wifi_link_attempts(),display_ok?"true":"false",
@@ -232,7 +236,7 @@ void app_main(void){
     /* Flashed directly (not pending): stay up and keep reporting, so long-run
      * heap drift is visible on the console. */
     for(;;){
-        vTaskDelay(pdMS_TO_TICKS(600000));   /* every 10 min: the 4 KiB log then spans hours */
+        vTaskDelay(pdMS_TO_TICKS(600000));   /* every 10 min: the 7 KiB log then spans hours */
         fw_mem_report("idle",NULL);
     }
 }
