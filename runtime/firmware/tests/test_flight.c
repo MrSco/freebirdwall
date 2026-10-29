@@ -183,8 +183,8 @@ int main(void){
 
     s = settings();
     f = sample();
-    strcpy(f.orig, "A\xC3\xA9roport \xE2\x80\x9C" "CDG\xE2\x80\x9D \xE2\x80\x93 Paris\xE2\x80\xA6");
-    CHECK_STR(expand(&s, &f, "{orig}"), "A\xC3\xA9roport \"CDG\" - Paris...");
+    strcpy(f.orig, "A\xC3\xA9roport \xE2\x80\x9C" "NCE\xE2\x80\x9D \xE2\x80\x93 Nice\xE2\x80\xA6");   /* 31 bytes: orig holds 32 */
+    CHECK_STR(expand(&s, &f, "{orig}"), "A\xC3\xA9roport \"NCE\" - Nice...");
     strcpy(f.ac_name, "Boeing\xC2\xA0" "737");
     CHECK_STR(expand(&s, &f, "{ac_name}"), "Boeing 737");
     strcpy(f.reg, "N\xE2\x80\x93" "1");                 /* registration is not cleaned */

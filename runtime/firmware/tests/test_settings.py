@@ -3,6 +3,7 @@
     py tests/test_settings.py
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 FW = HERE.parent
-CJSON = Path.home() / 'esp' / 'esp-idf-v4.4.7' / 'components' / 'json' / 'cJSON'
+CJSON = Path(os.environ.get('IDF_PATH') or Path.home() / 'esp' / 'esp-idf-v4.4.7') / 'components' / 'json' / 'cJSON'
 checks, failures = 0, []
 
 

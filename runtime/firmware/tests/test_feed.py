@@ -10,6 +10,7 @@ the stock rules in FEED.md.
 """
 import json
 import math
+import os
 import shutil
 import struct
 import subprocess
@@ -23,8 +24,10 @@ DEPS = FW.parent / 'build' / 'deps'
 sys.path.insert(0, str(DEPS / 'py-msgpack'))
 import msgpack  # noqa: E402
 
+UINT = ['-Duint=unsigned'] if os.name == 'nt' else []   # PNGdec uses uint: glibc declares it, MinGW does not
+
 PNGDEC = DEPS / 'pngdec' / 'src'
-CJSON = Path.home() / 'esp' / 'esp-idf-v4.4.7' / 'components' / 'json' / 'cJSON'
+CJSON = Path(os.environ.get('IDF_PATH') or Path.home() / 'esp' / 'esp-idf-v4.4.7') / 'components' / 'json' / 'cJSON'
 SOURCES = [HERE / 'feed_dump.c', FW / 'components/fw_feed/fw_feed_msgpack.c', FW / 'components/fw_feed/fw_feed_config.c',
            FW / 'components/fw_feed/fw_feed_http.c',
            FW / 'components/fw_flight/fw_flight.c', FW / 'components/fw_flight/fw_rotation.c',
@@ -52,7 +55,7 @@ def check(cond, what):
 def build(tmp):
     gcc = shutil.which('gcc') or sys.exit('a desktop gcc is required')
     exe = Path(tmp) / 'feed_dump.exe'
-    cmd = [gcc, '-std=gnu11', '-O1', '-w', '-D__LINUX__=1', '-Duint=unsigned',
+    cmd = [gcc, '-std=gnu11', '-O1', '-w', '-D__LINUX__=1', *UINT,
            '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)'] + ['-I%s' % i for i in INCLUDES] + [str(s) for s in SOURCES] + [
         '-o', str(exe), '-lm']
     r = subprocess.run(cmd, capture_output=True, text=True)

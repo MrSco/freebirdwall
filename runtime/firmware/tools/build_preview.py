@@ -45,7 +45,7 @@ INCLUDES = [FW / 'components/fw_screens/include', FW / 'components/fw_text/inclu
             FW / 'components/qrcode/include', DEPS / 'qrcode/src']
 DEFINES = ['-D__LINUX__=1', '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
 FLAGS = ['-std=gnu11', '-funsigned-char'] + DEFINES + ['-I%s' % i for i in INCLUDES]
-HOST_FLAGS = ['-Duint=unsigned']      # musl (wasi-libc) has uint; the desktop C library may not
+HOST_FLAGS = ['-Duint=unsigned'] if os.name == 'nt' else []   # wasi-libc and glibc have uint; MinGW does not
 
 
 def find_zig(given=None):

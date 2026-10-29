@@ -14,7 +14,9 @@ FIRMWARE = HERE.parent
 PNGDEC = FIRMWARE.parent / 'build' / 'deps' / 'pngdec' / 'src'
 PNGDEC_SOURCES = [PNGDEC / n for n in ('adler32.c', 'crc32.c', 'infback.c', 'inffast.c', 'inflate.c',
                                        'inftrees.c', 'zutil.c')]
-PNGDEC_DEFINES = ['-D__LINUX__=1', '-Duint=unsigned', '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
+# PNGdec uses uint: glibc declares it, MinGW does not.
+UINT = ['-Duint=unsigned'] if os.name == 'nt' else []
+PNGDEC_DEFINES = ['-D__LINUX__=1', *UINT, '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
 # cJSON as ESP-IDF ships it (components/json), for the saved-network list.
 CJSON = Path(os.environ.get('IDF_PATH') or Path.home() / 'esp' / 'esp-idf-v4.4.7') / 'components' / 'json' / 'cJSON'
 TESTS = {
@@ -57,7 +59,6 @@ TESTS = {
                      FIRMWARE / 'components/fw_logo/include', FIRMWARE / 'components/fw_text/include', PNGDEC,
                      FIRMWARE / 'components/qrcode/include', FIRMWARE.parent / 'build/deps/qrcode/src'],
         'defines': PNGDEC_DEFINES,
-        'libs': ['-lm'],
     },
     'test_sync': {
         'sources': [HERE / 'test_sync.c',
@@ -77,7 +78,6 @@ TESTS = {
                      FIRMWARE / 'components/fw_text/include', PNGDEC, FIRMWARE / 'components/qrcode/include',
                      FIRMWARE.parent / 'build/deps/qrcode/src'],
         'defines': PNGDEC_DEFINES,
-        'libs': ['-lm'],
     },
     'test_analytics': {
         'sources': [HERE / 'test_analytics.c', FIRMWARE / 'components/fw_analytics/fw_analytics.c'],
@@ -186,8 +186,11 @@ def main():
                     print('BUILD FAIL %s (%s)\n%s' % (name, src.name, tp.stderr))
                     break
                 objs.append(str(obj))
+            if len(objs) != len(spec.get('third_party', [])):
+                failed += 1
+                continue
             cmd += spec.get('defines', []) + ['-I%s' % i for i in spec['includes']]
-            cmd += [str(s) for s in spec['sources']] + objs + ['-o', str(exe)] + spec.get('libs', [])
+            cmd += [str(s) for s in spec['sources']] + objs + ['-o', str(exe), '-lm']   # Linux links libm only on request
             build = subprocess.run(cmd, capture_output=True, text=True)
             if build.returncode:
                 print('BUILD FAIL %s\n%s' % (name, build.stderr))

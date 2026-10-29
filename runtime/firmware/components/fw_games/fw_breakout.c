@@ -3,6 +3,7 @@
  * paddle shrinks once the ball reaches the ceiling, as in the arcade game.
  * Clearing the wall builds the next one, a little faster. */
 #include <stdio.h>
+#include <string.h>
 #include "games_common.h"
 
 #define BRICK_TOP 10                  /* first brick row */
@@ -53,6 +54,7 @@ static void start_level(FwBreakout *g){
 }
 
 void fw_breakout_init(FwBreakout *g, int width, int height, uint32_t seed){
+    memset(g, 0, sizeof *g);          /* padding too: two games from one seed are the same bytes */
     g->width = width;
     g->height = height;
     g->rng = seed ? seed : 1;

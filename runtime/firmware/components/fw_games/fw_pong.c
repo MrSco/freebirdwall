@@ -1,6 +1,7 @@
 /* Pong: two paddles, first to FW_PONG_WIN. A side with no phone is played by
  * the computer, which is fast but late, so it can be beaten. */
 #include <stdio.h>
+#include <string.h>
 #include "games_common.h"
 
 #define PADDLE_GAP 3                  /* px between the edge and a paddle */
@@ -26,6 +27,7 @@ static void place_ball(FwPong *g){
 }
 
 void fw_pong_init(FwPong *g, int width, int height, uint32_t seed){
+    memset(g, 0, sizeof *g);          /* padding too: two games from one seed are the same bytes */
     g->width = width;
     g->height = height;
     g->rng = seed ? seed : 1;

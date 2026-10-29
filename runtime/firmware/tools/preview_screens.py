@@ -7,11 +7,14 @@ pitch), so layout can be checked before any board run. Needs a desktop gcc and
 Pillow.
 """
 import argparse
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+UINT = ['-Duint=unsigned'] if os.name == 'nt' else []   # PNGdec uses uint: glibc declares it, MinGW does not
 
 HERE = Path(__file__).resolve().parent
 FW = HERE.parent
@@ -32,7 +35,7 @@ INCLUDES = [FW / 'components/fw_screens/include', FW / 'components/fw_text/inclu
             FW.parent / 'build/deps/qrcode/src',
             FW / 'components/fw_logo/include', PNGDEC,
             FW / 'components/fw_sync/include', FW / 'components/fw_games/include']
-DEFINES = ['-D__LINUX__=1', '-Duint=unsigned', '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
+DEFINES = ['-D__LINUX__=1', *UINT, '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
 LOGO = FW / 'build' / 'logo-fixtures' / 'AAL.png'   # private, from tools/extract_logos.py
 SYSTEM_LOGO = FW / 'build' / 'system-fixtures' / 'logo.png'   # private, likewise
 PITCH = 8

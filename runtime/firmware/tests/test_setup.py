@@ -13,6 +13,7 @@ Needs pyzbar (bundles zbar on Windows) and Pillow:
   py -m pip install --target runtime/build/deps/py-zbar pyzbar==0.1.9
 Identities here are made up; the board's real id/fp are never used in tests.
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,8 @@ sys.path.insert(0, str(DEPS / 'py-zbar'))
 from PIL import Image  # noqa: E402
 from pyzbar.pyzbar import decode  # noqa: E402
 
+UINT = ['-Duint=unsigned'] if os.name == 'nt' else []   # PNGdec uses uint: glibc declares it, MinGW does not
+
 PNGDEC = DEPS / 'pngdec' / 'src'
 SOURCES = [HERE / 'setup_dump.c', FW / 'components/fw_screens/fw_screens.c', FW / 'components/fw_screens/fw_brand.c',
            FW / 'components/fw_flight/fw_flight.c', FW / 'components/fw_flight/fw_rotation.c',
@@ -36,7 +39,7 @@ SOURCES = [HERE / 'setup_dump.c', FW / 'components/fw_screens/fw_screens.c', FW 
            PNGDEC / n for n in ('adler32.c', 'crc32.c', 'infback.c', 'inffast.c', 'inflate.c', 'inftrees.c', 'zutil.c')]
 INCLUDES = [FW / 'components/fw_screens/include', FW / 'components/fw_flight/include',
             FW / 'components/fw_text/include', FW / 'components/fw_logo/include', PNGDEC, FW / 'components/qrcode/include', DEPS / 'qrcode' / 'src']
-DEFINES = ['-D__LINUX__=1', '-Duint=unsigned', '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
+DEFINES = ['-D__LINUX__=1', *UINT, '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']
 
 CASES = [('K7QM2P', 'ABCDEFGHIJKLMNOPQRST'), ('ZZ23AB', 'MFRGGZDFMZTWQ2LKNNWG'), ('A2B3C4', 'QRSTUVWXYZ234567ABCD')]
 checks = 0

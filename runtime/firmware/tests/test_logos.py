@@ -10,6 +10,7 @@ compared pixel for pixel at three square sizes: 32 (mini-v1 DEFAULT), 56
 tools/extract_logos.py and stay private.
 """
 import argparse
+import os
 import shutil
 import struct
 import subprocess
@@ -20,6 +21,8 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+UINT = ['-Duint=unsigned'] if os.name == 'nt' else []   # PNGdec uses uint: glibc declares it, MinGW does not
 
 HERE = Path(__file__).resolve().parent
 FW = HERE.parent
@@ -148,7 +151,7 @@ def build_dump(tmp):
         sys.exit('a desktop gcc is required')
     exe = Path(tmp) / 'logo_dump.exe'
     zsrc = [PNGDEC / n for n in ('adler32.c', 'crc32.c', 'infback.c', 'inffast.c', 'inflate.c', 'inftrees.c', 'zutil.c')]
-    cmd = [gcc, '-std=gnu11', '-O1', '-D__LINUX__=1', '-Duint=unsigned',  # MinGW lacks the BSD uint type
+    cmd = [gcc, '-std=gnu11', '-O1', '-D__LINUX__=1', *UINT,
            '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)',
            '-I%s' % PNGDEC, '-I%s' % (FW / 'components/fw_logo/include'), '-I%s' % (FW / 'components/fw_text/include'),
            str(HERE / 'logo_dump.c'), str(FW / 'components/fw_logo/fw_logo.c'), str(FW / 'components/pngdec/pngdec_unit.c'),

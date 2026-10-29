@@ -7,8 +7,11 @@ The backup defaults to backups/stock-original-2026-09-08-backup.bin at the repo 
 Needs build/logo-fixtures from tools/extract_logos.py (littlefs-python), so the
 firmware's C littlefs build is checked against an independent implementation.
 """
+import os
 import shutil, subprocess, sys, tempfile
 from pathlib import Path
+
+UINT = ['-Duint=unsigned'] if os.name == 'nt' else []   # PNGdec uses uint: glibc declares it, MinGW does not
 
 HERE = Path(__file__).resolve().parent
 FW = HERE.parent
@@ -35,7 +38,7 @@ def main():
         (tmp / 'list.txt').write_text(''.join(n + '\n' for n in names))
         exe = tmp / 'test_assets.exe'
         cmd = [gcc, '-std=gnu11', '-O1', '-Wall', '-Wextra', '-DLFS_READONLY', '-DLFS_NO_MALLOC', '-DLFS_NO_DEBUG',
-               '-D__LINUX__=1', '-Duint=unsigned', '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)',
+               '-D__LINUX__=1', *UINT, '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)',
                '-I%s' % (FW / 'components/fw_assets/include'), '-I%s' % LFS,
                '-I%s' % (FW / 'components/fw_logo/include'), '-I%s' % (FW / 'components/fw_text/include'), '-I%s' % PNGDEC,
                str(HERE / 'test_assets.c'), str(FW / 'components/fw_assets/fw_assets.c'),
