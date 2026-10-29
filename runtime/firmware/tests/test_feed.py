@@ -264,6 +264,10 @@ def test_body(exe, tmp):
 
 def test_display(exe, tmp):
     d = run(exe, tmp, 'display', json.dumps(CONFIG))
+    check(d['heartbeat'] is True, 'display: heartbeat defaults on')
+    for enabled in (False, True, 'false', None):
+        e = run(exe, tmp, 'display', json.dumps(dict(CONFIG, owned_config={'heartbeat_enabled': enabled})))
+        check(e['heartbeat'] is (enabled is not False), 'display: heartbeat accepts only boolean false to disable')
     check(d['scroll'] == 40, 'display: scroll speed normal by default %r' % d['scroll'])
     for word, ms in (('slow', 80), ('normal', 40), ('fast', 20), ('warp', 40)):
         e = run(exe, tmp, 'display', json.dumps(dict(CONFIG, owned_config={'scroll_speed': word})))

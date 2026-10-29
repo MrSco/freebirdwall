@@ -90,6 +90,7 @@ typedef struct {
     /* owned */
     uint16_t scroll_px_ms;           /* owned_config.scroll_speed: slow 80, normal 40 (default), fast 20 ms a pixel */
     bool progress_bar;               /* owned_config.progress_bar, default false */
+    bool heartbeat_enabled;          /* owned_config.heartbeat_enabled, default true: the blinking corner pixel */
 } FwFeedDisplay;
 
 /* Returns false when the JSON has no display_config. */

@@ -251,6 +251,7 @@ bool fw_feed_display(const char *config_json, FwFeedDisplay *out){
         const char *sp = str(item(root, "owned_config"), "scroll_speed");
         out->scroll_px_ms = sp && !strcmp(sp, "slow") ? 80 : sp && !strcmp(sp, "fast") ? 20 : 40;
         out->progress_bar = cJSON_IsTrue(item(item(root, "owned_config"), "progress_bar"));
+        out->heartbeat_enabled = flag(item(root, "owned_config"), "heartbeat_enabled", true);
     }
     if (!cJSON_IsObject(dc)) { cJSON_Delete(root); return false; }
     out->has_display_config = true;

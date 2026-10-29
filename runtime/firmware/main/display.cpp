@@ -951,6 +951,8 @@ void animate(void *){
     bool canvas_ready = false;
     uint32_t qr_shown = 0;
     int pair_shown_left = -1;
+    uint32_t heartbeat_serial = 0;
+    bool heartbeat = true, heartbeat_was = true;
     for (;;) {
         char pair_code[7];
         int pair_left = 0;
@@ -1022,9 +1024,20 @@ void animate(void *){
             screens[screen].refresh(&s);
         }
         /* Heartbeat in the bottom-right corner: blinks about twice a second,
-         * so a frozen panel is obvious even on a static screen. */
-        bool on = (tick / 12) % 2;
-        s_panel->drawPixelRGB888(Width - 1, Height - 1, on ? 255 : 0, on ? 64 : 0, 0);
+         * so a frozen panel is obvious even on a static screen. The owner can
+         * turn it off (owned_config.heartbeat_enabled), on every screen. */
+        if (fw_feed_display_serial() != heartbeat_serial) {
+            FwFeedDisplay d;
+            heartbeat_serial = fw_feed_display_copy(&d);
+            heartbeat = d.heartbeat_enabled;
+        }
+        if (heartbeat) {
+            bool on = (tick / 12) % 2;
+            s_panel->drawPixelRGB888(Width - 1, Height - 1, on ? 255 : 0, on ? 64 : 0, 0);
+        } else if (heartbeat_was) {
+            s_panel->drawPixelRGB888(Width - 1, Height - 1, 0, 0, 0);
+        }
+        heartbeat_was = heartbeat;
         ++tick;
         ++s_frames;
         s_stack_free = uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t);

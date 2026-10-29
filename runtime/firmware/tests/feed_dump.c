@@ -131,6 +131,7 @@ int main(int argc, char **argv){
                d.clock_24h ? "true" : "false", d.clock_seconds ? "true" : "false", d.clock_large ? "true" : "false",
                d.clock_show_date ? "true" : "false", d.clock_day_first ? "true" : "false", d.clock_weekday ? "true" : "false");
         js(d.locale);
+        printf(",\"heartbeat\":%s", d.heartbeat_enabled ? "true" : "false");
         printf(",\"enabled\":%s,\"has_sleep\":%s,\"sleep\":[%d,%d,%d],\"scroll\":%u}\n", d.display_enabled ? "true" : "false",
                d.has_sleep ? "true" : "false", d.sleep_start_min, d.sleep_end_min, d.sleep_percent, (unsigned)d.scroll_px_ms);
     } else {

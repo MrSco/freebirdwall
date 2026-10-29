@@ -264,7 +264,8 @@ function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_ti
   range(P+'brightness_percent',1,100,15,'Brightness','%')+
   seg('owned_config.scroll_speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],'normal','Long names scroll')+
   sw(P+'border_enable',false,'Border','A coloured frame around each flight')+
-  (get(st.work,P+'border_enable')?range(P+'border_brightness_percent',0,100,100,'Border brightness','%'):''))+
+  (get(st.work,P+'border_enable')?range(P+'border_brightness_percent',0,100,100,'Border brightness','%'):'')+
+  sw('owned_config.heartbeat_enabled',true,'Heartbeat','A blinking orange dot in the bottom-right corner shows the wall is running'))+
  card('Power','',
   sw(P+'display_enabled',true,'Display on','Off leaves the wall dark; games and sign-in codes still show')+
   '<div class="field row" data-field="'+P+'sleep_time"><label for="sleepOn">Sleep schedule<small>Dims the wall overnight</small></label><label class="sw"><input type="checkbox" id="sleepOn"'+(sleepOn?' checked':'')+'><span></span></label></div>'+
@@ -849,7 +850,7 @@ var LIMITS={min_speed_mps:1,max_speed_mps:1,min_altitude:1,max_altitude:1};
 function pick(ks,o){var c={};ks.forEach(function(k){if(o[k]!==undefined&&o[k]!==null&&!(LIMITS[k]&&o[k]<0))c[k]=trim(k,o[k])});return c}
 var EDITABLE={display_config:['layout_template','loading_template','title_text','flight_display_speed','max_flights_behavior','metric_display','border_enable','border_brightness_percent','brightness_percent','anchor_airports','time_zone','clock_is_24hr','clock_show_seconds','clock','date_format','locale','display_enabled','sleep_time'],
  request_config:['radius_requests','data_filters','tracked_flights'],
- owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar']};
+ owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar','heartbeat_enabled']};
 function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
   EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
   if(e.radius_requests===null)delete e.radius_requests;
