@@ -7,7 +7,7 @@ either one the same way (`main/owner_update.c`, `shared/owner_ota.c`).
 
 | Route | What it does |
 | --- | --- |
-| `GET /v1/firmware` | running slot and image SHA-256 (whole file, as the desk computes it), boot slot, slot size, `update_busy`, `pending_confirmation`; plus `"firmware":"owned"` and `"keepable"` |
+| `GET /v1/firmware` | running slot and image SHA-256 (whole file, as the desk computes it), boot slot, slot size, `update_busy`, `pending_confirmation`; plus `"firmware":"owned"`, `"keepable"` and `"spare_slot"`: what the slot not running holds (`vendor`, `owned`, `empty`, `other`; `busy` during an upload) |
 | `PUT /v1/firmware` | upload into the other slot: binary body, `If-Match` with the running hash, `X-Firmware-SHA256` |
 | `POST /v1/firmware/confirm` | keep a pending image (see below) |
 | `POST /v1/firmware/switch` | owned only: boot the image in the other slot |
@@ -58,6 +58,12 @@ SHA-256, the SDK's image verification and a read-back, as for an upload. The
 boot choice stays: the installer's **Start the vendor firmware again** (USB)
 starts it. Not `switch` from the desk: the unmodified vendor firmware has no
 Wi-Fi update service, so only USB brings FreeBirdWall back from it.
+
+A running firmware cannot overwrite its own slot, so every Wi-Fi update
+replaces a vendor firmware kept in the other one; `update` says when it did
+(`spare_slot` was `vendor`). Put it back once, after the last update of a
+session: one 1.2 MB write, instead of one after every update (or two updates
+and a write to keep it in the same slot). It works the same from either slot.
 
 **Log over Wi-Fi.** Every status line the firmware prints (`FWSTATE`,
 `FWMEM`; never secrets) is also kept in a 7 KiB ring in RTC memory

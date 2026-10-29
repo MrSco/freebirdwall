@@ -201,6 +201,19 @@ static int if_match(httpd_req_t *req){
     return memcmp(want, s_running_hash, 32) || !current() ? 409 : 0;
 }
 
+/* What the slot not running holds, by its app description: "vendor" (the
+ * stock firmware kept next to FreeBirdWall), "owned", "empty" or "other". A
+ * Wi-Fi update replaces it (UPDATES.md "The vendor firmware in the spare
+ * slot"), so the desk says when that was the stock firmware. */
+static const char *spare_kind(void){
+    esp_app_desc_t d;
+    const esp_partition_t *spare = esp_ota_get_next_update_partition(NULL);
+    if (!app_slot(spare) || spare == s_running || esp_ota_get_partition_description(spare, &d) != ESP_OK) return "empty";
+    if (!strcmp(d.project_name, "arduino-lib-builder")) return "vendor";
+    if (!strcmp(d.project_name, "freebirdwall") || !strcmp(d.project_name, "flightwall-owned")) return "owned";
+    return "other";
+}
+
 static void status_json(char *out, size_t cap){
     char h[65];
     const esp_partition_t *boot = esp_ota_get_boot_partition();
@@ -208,14 +221,15 @@ static void status_json(char *out, size_t cap){
     snprintf(out, cap,
              "{\"api_version\":1,\"schema_version\":1,\"ota_supported\":true,\"running_slot\":\"%s\","
              "\"running_sha256\":\"%s\",\"partition_size\":%u,\"boot_slot\":\"%s\",\"rollback_supported\":true,"
-             "\"update_busy\":%s,\"pending_confirmation\":%s,\"firmware\":\"owned\",\"keepable\":%s,\"safe_mode\":%s,\"board_ok\":%s}",
+             "\"update_busy\":%s,\"pending_confirmation\":%s,\"firmware\":\"owned\",\"keepable\":%s,\"safe_mode\":%s,\"board_ok\":%s,"
+             "\"spare_slot\":\"%s\"}",
              slot_name(s_running), h, (unsigned)s_running->size, app_slot(boot) ? slot_name(boot) : slot_name(s_running),
              s_busy ? "true" : "false", s_pending ? "true" : "false", KEEPABLE ? "true" : "false",
-             fw_safe_mode() ? "true" : "false", fw_board()->ok ? "true" : "false");
+             fw_safe_mode() ? "true" : "false", fw_board()->ok ? "true" : "false", s_busy ? "busy" : spare_kind());
 }
 
 static esp_err_t get_status(httpd_req_t *req){
-    char body[400];
+    char body[448];
     int g = gate(req);
     if (g) return error(req, g, "not allowed");
     if (!s_ready) return error(req, 503, "not ready");
@@ -446,7 +460,7 @@ static esp_err_t put_spare(httpd_req_t *req){
 /* ------------------------------------------------------------ confirm / switch */
 
 static esp_err_t post_confirm(httpd_req_t *req){
-    char body[400];
+    char body[448];
     int g = gate(req);
     if (g) return error(req, g, "not allowed");
     if (!s_ready) return error(req, 503, "not ready");

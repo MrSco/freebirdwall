@@ -7,9 +7,10 @@
     py desk/firmware_cli.py switch    # boot the other slot (owned -> stock), then confirm it
 
 Uses desk/device.json (address and key), or --device <path> before the
-command; the key is never printed. An update goes
-into the slot not running, so it replaces a vendor firmware kept there; put
-it back with `spare` (UPDATES.md "The vendor firmware in the spare slot").
+command; the key is never printed. An update goes into the slot not
+running, so it replaces a vendor firmware kept there (status: spare_slot);
+put it back with `spare` once the updates are done, one write instead of
+one per update (UPDATES.md "The vendor firmware in the spare slot").
 Tests: py -m unittest discover desk
 """
 import json
@@ -48,6 +49,10 @@ def main():
             result = client.switch_slot(status['running_sha256'])
         result.pop('firmware', None)
         print(json.dumps(result, indent=1))
+        if result.get('replaced_stock'):
+            print('The stock firmware that was in %s is replaced. When the updates are done, put it back:' %
+                  result['target_slot'])
+            print('    py desk/firmware_cli.py spare <vendor app .bin>')
     except firmware_device.DeviceError as e:
         sys.exit('refused: %s' % e)
 

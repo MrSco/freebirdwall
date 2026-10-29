@@ -40,7 +40,8 @@ class Mock(BaseHTTPRequestHandler):
         if not self.authenticated():return self.send(401,{})
         return self.send(200,{'api_version':1,'schema_version':1,'ota_supported':True,
             'running_sha256':self.server.sha,'running_slot':self.server.slot,'boot_slot':self.server.slot,
-            'partition_size':0x2c0000,'rollback_supported':True,'update_busy':False,'pending_confirmation':self.server.pending})
+            'partition_size':0x2c0000,'rollback_supported':True,'update_busy':False,'pending_confirmation':self.server.pending,
+            **({'spare_slot':self.server.spare_kind} if self.server.spare_kind else {})})
     def do_PUT(self):
         self.server.puts+=1;raw=self.rfile.read(int(self.headers['Content-Length']))
         if self.headers.get('If-Match')!='"'+self.server.sha+'"':return self.send(409,{})
@@ -69,7 +70,7 @@ class Mock(BaseHTTPRequestHandler):
 class FirmwareTests(unittest.TestCase):
     def setUp(self):
         self.server=ThreadingHTTPServer(('127.0.0.1',0),Mock)
-        for key,value in dict(sha='1'*64,slot='app1',pending=False,reads=0,puts=0,confirms=0,error=0,confirm_error=False,bad_receipt=False,other='2'*64,switches=0,switchable=True,has_log=True).items():setattr(self.server,key,value)
+        for key,value in dict(sha='1'*64,slot='app1',pending=False,reads=0,puts=0,confirms=0,error=0,confirm_error=False,bad_receipt=False,other='2'*64,switches=0,switchable=True,has_log=True,spare_kind='owned').items():setattr(self.server,key,value)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
         def connection(host,port,timeout):
             self.assertEqual((host,port),(CONNECTION['ip'],8787))
@@ -106,6 +107,19 @@ class FirmwareTests(unittest.TestCase):
         self.server.switchable=False
         with self.assertRaises(fw.DeviceError) as e:self.client.switch_slot('1'*64)
         self.assertIn('owned firmware only',str(e.exception))
+    def test_update_says_when_it_replaced_the_kept_stock_firmware(self):
+        self.server.spare_kind='vendor'
+        self.assertTrue(self.client.update(image(),'1'*64)['replaced_stock'])
+    def test_update_over_firmware_of_ours_or_unknown_spare_replaces_no_stock(self):
+        self.assertFalse(self.client.update(image(),'1'*64)['replaced_stock'])
+        self.server.spare_kind=None;self.server.slot='app1'      # firmware from before spare_slot
+        self.assertNotIn('spare_slot',self.client.status())
+        self.assertFalse(self.client.update(image(),self.server.sha)['replaced_stock'])
+    def test_spare_slot_values_are_allowlisted(self):
+        self.server.spare_kind='vendor'
+        self.assertEqual(self.client.status()['spare_slot'],'vendor')
+        self.server.spare_kind=TOKEN
+        self.assertNotIn('spare_slot',self.client.status())
     def test_spare_stores_the_vendor_firmware_without_changing_what_starts(self):
         result=self.client.store_spare(vendor_image(),'1'*64)
         self.assertEqual((result['stored'],result['slot'],result['bytes']),(True,'app0',640))

@@ -156,9 +156,13 @@ class Client:
                 or type(body.get('pending_confirmation')) is not bool):
             raise DeviceError('Device returned an invalid firmware status.')
         # Only return this allowlist. No device-supplied error or key can leak.
-        return {key: body[key] for key in ('api_version', 'schema_version', 'ota_supported',
-                'running_slot', 'running_sha256', 'partition_size', 'boot_slot',
-                'rollback_supported', 'update_busy', 'pending_confirmation')}
+        status = {key: body[key] for key in ('api_version', 'schema_version', 'ota_supported',
+                  'running_slot', 'running_sha256', 'partition_size', 'boot_slot',
+                  'rollback_supported', 'update_busy', 'pending_confirmation')}
+        # What the slot not running holds (owned firmware from October 29, 2026).
+        if body.get('spare_slot') in ('vendor', 'owned', 'empty', 'other', 'busy'):
+            status['spare_slot'] = body['spare_slot']
+        return status
 
     def update(self, image, expected):
         expected = sha256(expected)
@@ -171,6 +175,9 @@ class Client:
         if len(image) > current['partition_size']:
             raise DeviceError('Firmware is larger than the device application slot.', 400)
         target = 'app0' if current['running_slot'] == 'app1' else 'app1'
+        # The update goes where the stock firmware may be kept: say so, so it is
+        # put back (store_spare) once the updates are done.
+        replaced = current.get('spare_slot') == 'vendor'
         # Exactly one PUT: a lost receipt may still mean the board selected the
         # new slot. Never retry a firmware write after an ambiguous disconnect.
         receipt = self._request('PUT', image, expected, digest, timeout=45)
@@ -194,14 +201,14 @@ class Client:
                         continue
                     return {'accepted': True, 'device_confirmed': True, 'reboot_confirmed': True,
                             'sha256': digest, 'bytes': len(image), 'target_slot': target,
-                            'firmware': status}
+                            'replaced_stock': replaced, 'firmware': status}
             except DeviceError:
                 pass  # A reboot temporarily closes the socket. The write is not repeated.
             remaining = deadline - time.monotonic()
             if remaining > 0:
                 time.sleep(min(1, remaining))
         return {'accepted': True, 'device_confirmed': False, 'reboot_confirmed': False,
-                'sha256': digest, 'bytes': len(image), 'target_slot': target,
+                'sha256': digest, 'bytes': len(image), 'target_slot': target, 'replaced_stock': replaced,
                 'message': 'Upload accepted, but restart is unconfirmed. Read firmware status before another upload.'}
 
     def log(self, timeout=10):
