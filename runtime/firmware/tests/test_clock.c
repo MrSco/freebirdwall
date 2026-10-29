@@ -72,10 +72,10 @@ static void date_text(FwClockConfig c, const char *want){
     CHECK_STR(buf, want);
 }
 
-static void zone_name(int minutes, const char *want){
-    FwZone z = {(int16_t)minutes, FW_DST_NONE};
+static void zone_name(int minutes, int rule, bool dst, const char *want){
+    FwZone z = {(int16_t)minutes, (uint8_t)rule};
     char buf[16];
-    fw_zone_name(z, buf, sizeof buf);
+    fw_zone_name(z, dst, buf, sizeof buf);
     CHECK_STR(buf, want);
 }
 
@@ -132,16 +132,26 @@ int main(void){
     date_text(c, "MON 19 OCT");
 
     /* --- zone names ------------------------------------------------------ */
-    zone_name(-300, "EST");
-    zone_name(-360, "CST");
-    zone_name(480, "CST");
-    zone_name(0, "GMT");
-    zone_name(330, "IST");
-    zone_name(345, "UTC+5:45");
-    zone_name(-210, "UTC-3:30");
-    zone_name(-720, "UTC-12");
-    zone_name(780, "UTC+13");
-    zone_name(FW_ZONE_UNSET, "UTC");
+    zone_name(-300, FW_DST_NONE, false, "EST");
+    zone_name(-360, FW_DST_NONE, false, "CST");
+    zone_name(480, FW_DST_NONE, false, "CST");
+    zone_name(0, FW_DST_NONE, false, "GMT");
+    zone_name(330, FW_DST_NONE, false, "IST");
+    zone_name(345, FW_DST_NONE, false, "UTC+5:45");
+    /* owned: while daylight saving is on, the daylight name (stock: EST all year) */
+    zone_name(-300, FW_DST_NORTH_AMERICA, false, "EST");
+    zone_name(-300, FW_DST_NORTH_AMERICA, true, "EDT");
+    zone_name(-480, FW_DST_NORTH_AMERICA, true, "PDT");
+    zone_name(-540, FW_DST_NORTH_AMERICA, true, "AKDT");
+    zone_name(0, FW_DST_EUROPE, true, "BST");
+    zone_name(60, FW_DST_EUROPE, true, "CEST");
+    zone_name(120, FW_DST_EUROPE, false, "EET");
+    zone_name(-210, FW_DST_NORTH_AMERICA, true, "UTC-2:30");   /* no daylight name: the offset now */
+    zone_name(600, FW_DST_EUROPE, true, "UTC+11");             /* a rule the name does not go with */
+    zone_name(-210, FW_DST_NONE, false, "UTC-3:30");
+    zone_name(-720, FW_DST_NONE, false, "UTC-12");
+    zone_name(780, FW_DST_NONE, false, "UTC+13");
+    zone_name(FW_ZONE_UNSET, FW_DST_NORTH_AMERICA, true, "UTC");
 
     /* --- layout: the owner's LARGE clock ----------------------------------- */
     c = owner();
@@ -179,12 +189,22 @@ int main(void){
     fw_clock_frame(&c, T_OWNER, W, H, &f);
     CHECK(f.count == 3 && f.scale == 1);
     check_line(&f.lines[0], FW_CLOCK_DATE, "MON 19 OCT", 34, 19, 60, 8);
-    check_line(&f.lines[1], FW_CLOCK_TIME, "EST 10:25 AM", 28, 28, 72, 8);  /* stock names the standard zone */
+    check_line(&f.lines[1], FW_CLOCK_TIME, "EDT 10:25 AM", 28, 28, 72, 8);  /* daylight saving on October 19 */
     check_line(&f.lines[2], FW_CLOCK_ZONE, "LONDON 3:25 PM", 22, 37, 84, 8);
     c.show_date = false;                                 /* no date: both extras */
     fw_clock_frame(&c, T_OWNER, W, H, &f);
     CHECK(f.count == 3);
     CHECK_STR(f.lines[2].text, "JST 11:25 PM");
+    c.extra[1].zone.standard_offset_min = 60;            /* no label: the zone's name, daylight in October */
+    c.extra[1].zone.dst_rule = FW_DST_EUROPE;
+    fw_clock_frame(&c, T_OWNER, W, H, &f);
+    CHECK_STR(f.lines[2].text, "CEST 4:25 PM");
+    fw_clock_frame(&c, T_OWNER + 30LL * 86400, W, H, &f);   /* November 18: both back on standard time */
+    CHECK_STR(f.lines[0].text, "EST 9:25 AM");
+    CHECK_STR(f.lines[1].text, "LONDON 2:25 PM");
+    CHECK_STR(f.lines[2].text, "CET 3:25 PM");
+    c.extra[1].zone.standard_offset_min = 540;
+    c.extra[1].zone.dst_rule = FW_DST_NONE;
     c.large = true;                                      /* LARGE: two lines, so one extra */
     fw_clock_frame(&c, T_OWNER, W, H, &f);
     CHECK(f.count == 2 && f.scale == 1);                 /* 14 x 12 = 168 > 128 */

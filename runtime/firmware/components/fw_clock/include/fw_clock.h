@@ -47,8 +47,10 @@ typedef struct { int sec, min, hour, mday, mon, year, wday, yday; bool dst; } Fw
 /* Local time for a zone exactly as stock computes it, DST rules included. */
 bool fw_local_time(int64_t utc_seconds, FwZone zone, FwTime *out);
 
-/* Stock name for a zone: its abbreviation (EST, CET...) or "UTC+5:30". */
-void fw_zone_name(FwZone zone, char *buf, int cap);
+/* A zone's name: its abbreviation (EST, CET...) or "UTC+5:30" as stock names
+ * it, or while daylight saving is on (dst, from fw_local_time) the daylight
+ * name (EDT, CEST...) or the offset as it is then. */
+void fw_zone_name(FwZone zone, bool dst, char *buf, int cap);
 
 /* Line text as stock formats it. buf >= 32 bytes. */
 void fw_clock_time_text(const FwClockConfig *c, const FwTime *t, char *buf, int cap);

@@ -38,15 +38,15 @@ Inside the window the offset gains 60 minutes. Stock `time_t` is 32-bit.
 | --- | --- | --- |
 | Time | `FUN_420075b4` | 24 h: `%02d:%02d[:%02d]`; 12 h: `%d:%02d[:%02d] %s`, hour 0 → 12, `AM` when hour ≤ 11 |
 | Date | `FUN_42007664` | `"%d %s"` (day_month) or `"%s %d"`, then `weekday + " " + that`; month/weekday names upper-case from the locale table; over 31 bytes → empty |
-| Zone name | `FUN_42019f90`, `FUN_42019f20` | first table match on *standard* offset (HST AKT PST MST CST EST AST BRT AZT GMT CET EET MSK GST IST ICT CST JST AET NZT), else `UTC±H` / `UTC±H:MM`; no zone → `UTC` |
+| Zone name | `FUN_42019f90`, `FUN_42019f20` | first table match on *standard* offset (HST AKT PST MST CST EST AST BRT AZT GMT CET EET MSK GST IST ICT CST JST AET NZT), else `UTC±H` / `UTC±H:MM`; no zone → `UTC`. **Owned:** while daylight saving is on, the daylight name for the offset and rule (HDT AKDT PDT MDT CDT EDT ADT; BST CEST EEST), else the offset as it is then (`UTC-2:30`) |
 | Extra zone label | `FUN_42013874` | trimmed, ASCII upper-cased; empty → zone name |
 
 ## Lines and layout — `FUN_42013874`, `FUN_42013b88`
 
 - Up to 3 lines (2 in `LARGE`): **date** (if shown), **time**, then extra zones
   in the remaining lines. With extra zones the main time line is prefixed with
-  the main zone's name (`EST 10:25 AM`, even during DST — stock names the
-  standard offset).
+  the main zone's name: `EDT 10:25 AM` in summer, `EST 10:25 AM` in winter
+  (stock names the standard offset all year, `EST` in July).
 - Width of a line = code points × 6 × scale. `LARGE` uses scale 2 when the
   longest line × 12 ≤ panel width and lines × 16 + gaps ≤ panel height, else 1.
 - The block is centred: `x0 = (W − widest) / 2`, `y0 = (H − (8·scale·n + n − 1)) / 2`

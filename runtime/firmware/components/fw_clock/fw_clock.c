@@ -88,22 +88,37 @@ bool fw_local_time(int64_t utc, FwZone zone, FwTime *out){
     return true;
 }
 
-/* FUN_42019f90 / FUN_42019f20. */
-void fw_zone_name(FwZone zone, char *buf, int cap){
-    int i, mag;
+/* Owned: the names while daylight saving is on, by standard offset and rule
+ * (stock names the standard offset all year, "EST" in July). */
+static const struct { int16_t minutes; uint8_t rule; const char *name; } DAYLIGHT_NAMES[] = {
+    {-600, FW_DST_NORTH_AMERICA, "HDT"}, {-540, FW_DST_NORTH_AMERICA, "AKDT"}, {-480, FW_DST_NORTH_AMERICA, "PDT"},
+    {-420, FW_DST_NORTH_AMERICA, "MDT"}, {-360, FW_DST_NORTH_AMERICA, "CDT"}, {-300, FW_DST_NORTH_AMERICA, "EDT"},
+    {-240, FW_DST_NORTH_AMERICA, "ADT"},
+    {0, FW_DST_EUROPE, "BST"}, {60, FW_DST_EUROPE, "CEST"}, {120, FW_DST_EUROPE, "EEST"},
+};
+
+/* FUN_42019f90 / FUN_42019f20, and the daylight name when dst (fw_local_time):
+ * a zone in daylight saving with no name here shows its offset as it is now. */
+void fw_zone_name(FwZone zone, bool dst, char *buf, int cap){
+    int i, mag, now;
     if (!buf || cap <= 0) return;
     if (zone.standard_offset_min == FW_ZONE_UNSET) { snprintf(buf, (size_t)cap, "UTC"); return; }
-    for (i = 0; i < FW_CLOCK_ZONE_NAMES; ++i)
+    for (i = 0; dst && i < (int)(sizeof DAYLIGHT_NAMES / sizeof DAYLIGHT_NAMES[0]); ++i)
+        if (DAYLIGHT_NAMES[i].minutes == zone.standard_offset_min && DAYLIGHT_NAMES[i].rule == zone.dst_rule) {
+            snprintf(buf, (size_t)cap, "%s", DAYLIGHT_NAMES[i].name);
+            return;
+        }
+    for (i = 0; !dst && i < FW_CLOCK_ZONE_NAMES; ++i)
         if (fw_clock_zone_names[i].minutes == zone.standard_offset_min) {
             snprintf(buf, (size_t)cap, "%s", fw_clock_zone_names[i].name);
             return;
         }
-    mag = zone.standard_offset_min < 0 ? -zone.standard_offset_min : zone.standard_offset_min;
+    now = zone.standard_offset_min + (dst ? 60 : 0);
+    mag = now < 0 ? -now : now;
     if (mag % 60)
-        snprintf(buf, (size_t)(cap < 12 ? cap : 12), "UTC%c%d:%02d", zone.standard_offset_min >= 0 ? '+' : '-',
-                 mag / 60, mag % 60);
+        snprintf(buf, (size_t)(cap < 12 ? cap : 12), "UTC%c%d:%02d", now >= 0 ? '+' : '-', mag / 60, mag % 60);
     else
-        snprintf(buf, (size_t)(cap < 12 ? cap : 12), "UTC%c%d", zone.standard_offset_min >= 0 ? '+' : '-', mag / 60);
+        snprintf(buf, (size_t)(cap < 12 ? cap : 12), "UTC%c%d", now >= 0 ? '+' : '-', mag / 60);
 }
 
 /* ------------------------------------------------------------ text */
@@ -150,7 +165,7 @@ void fw_clock_date_text(const FwClockConfig *c, const FwTime *t, char *buf, int 
 }
 
 /* Extra-zone label: trimmed, ASCII upper-cased; empty means the zone's name. */
-static void zone_label(const FwExtraZone *z, char *buf, int cap){
+static void zone_label(const FwExtraZone *z, bool dst, char *buf, int cap){
     const char *b = z->label, *e;
     char *o;
     size_t len = 0;
@@ -158,7 +173,7 @@ static void zone_label(const FwExtraZone *z, char *buf, int cap){
     while (b < z->label + len && (*b == ' ' || (*b >= '\t' && *b <= '\r'))) ++b;
     e = z->label + len;
     while (e > b && (e[-1] == ' ' || (e[-1] >= '\t' && e[-1] <= '\r'))) --e;
-    if (e == b) { fw_zone_name(z->zone, buf, cap); return; }
+    if (e == b) { fw_zone_name(z->zone, dst, buf, cap); return; }
     snprintf(buf, (size_t)cap, "%.*s", (int)(e - b), b);
     for (o = buf; *o; ++o)
         if (*o >= 'a' && *o <= 'z') *o = (char)(*o - 'a' + 'A');
@@ -198,14 +213,14 @@ void fw_clock_frame(const FwClockConfig *c, int64_t utc, int width, int height, 
         fw_clock_time_text(c, &t, time_text, sizeof time_text);
         if (extras == 0) add_line(f, FW_CLOCK_TIME, time_text);
         else {
-            fw_zone_name(c->zone, name, sizeof name);
+            fw_zone_name(c->zone, t.dst, name, sizeof name);
             snprintf(line, sizeof line, "%s %s", name, time_text);
             add_line(f, FW_CLOCK_TIME, line);
         }
         for (i = 0; i < extras; ++i) {
             if (!fw_local_time(utc, c->extra[i].zone, &t)) continue;
             fw_clock_time_text(c, &t, time_text, sizeof time_text);
-            zone_label(&c->extra[i], name, sizeof name);
+            zone_label(&c->extra[i], t.dst, name, sizeof name);
             snprintf(line, sizeof line, "%s %s", name, time_text);
             add_line(f, FW_CLOCK_ZONE, line);
         }
