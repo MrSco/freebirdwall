@@ -18,7 +18,8 @@ html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-
 button,input,select{font:inherit;color:inherit}
 .wrap{max-width:980px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 16px 120px}
 header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
-h1{font-size:22px;margin:0}
+h1{font-size:22px;margin:0;display:flex;align-items:center;gap:9px}
+h1 img{width:28px;height:28px;flex:none}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:5px 10px;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
 .dot.live{background:var(--good)}.dot.wait{background:var(--warm)}.dot.off{background:var(--bad)}
@@ -138,7 +139,7 @@ details.adv[open] summary{margin-bottom:8px}
 </head>
 <body>
 <div class="wrap">
-<header><h1>FreeBirdWall</h1><span class="pill" id="status"><span class="dot"></span><span>Connecting…</span></span></header>
+<header><h1><img id="logo" alt="">FreeBirdWall</h1><span class="pill" id="status"><span class="dot"></span><span>Connecting…</span></span></header>
 
 <section id="wait" class="card hidden" style="margin:8px 0 14px"><h2>Connecting to the wall…</h2><p class="sub" style="margin:0">It may be restarting. Trying again every few seconds; you stay signed in.</p></section>
 <section id="signin" class="card hidden" style="margin:8px 0 14px">
@@ -167,6 +168,7 @@ details.adv[open] summary{margin-bottom:8px}
 'use strict';
 function $(s,r){return (r||document).querySelector(s)}
 function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
+$('#logo').src=$('link[rel=icon]').href;   /* the favicon's data URI again: no second copy, no request */
 function store(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}return null}
 var key=store('fwkey');
 var st={rev:0,doc:null,work:null,aliases:{revision:0,aliases:[]},aliasWork:[],feed:-1,tab:store('fwtab')||'display',dirty:false,games:null,areaOpen:-1};
