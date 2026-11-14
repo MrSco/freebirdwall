@@ -81,6 +81,7 @@ struct State {
     uint32_t last_route;
     bool good;
     uint32_t polls, fails, routes, routes_found;
+    uint32_t adsbfi_done;                   /* when the last adsb.fi request ended, 0 none */
     /* tracked flights: allocated only while there are any (about 2.5 + 2.8 KiB) */
     Target *targets;
     int target_count;
@@ -157,7 +158,22 @@ int https_get(const char *host, const char *path, unsigned *status, uint32_t *re
                         retry_after, consume);
 }
 
+/* adsb.fi's open data allows about one request a second: the area polls, the
+ * Sync leg and the tracked flights all go there from this task, often one right
+ * after another, so each waits until a second has passed since the last one
+ * ended. A 429 there used to read as "not in the air". */
+constexpr uint32_t AdsbFiGapMs = 1000;
+void adsbfi_pace(){
+    if (!s->adsbfi_done) return;
+    uint32_t gap = now_ms() - s->adsbfi_done;
+    if (gap < AdsbFiGapMs) vTaskDelay(pdMS_TO_TICKS(AdsbFiGapMs - gap));
+}
+void adsbfi_ended(){ s->adsbfi_done = now_ms() | 1; }
+
 void poll_positions(uint32_t now){
+    if (!s->positions.ready(now)) return;
+    adsbfi_pace();
+    now = now_ms();
     if (!s->positions.reserve(now)) return;
     size_t zone = s->next_zone++ % s->config.count;
     Request rq;
@@ -175,6 +191,7 @@ void poll_positions(uint32_t now){
         return parsed == Result::Ok;
     });
     s->doc.clear();
+    adsbfi_ended();
     uint32_t done = now_ms();
     bool ok = !stage && status == 200 && parsed == Result::Ok;
     s->positions.complete(done, stage ? 0 : status, retry);
@@ -270,12 +287,14 @@ bool callsign_fix(const char *cs, int *stage, unsigned *status){
     Result parsed = Result::Invalid;
     ParseOptions opts;
     std::snprintf(path, sizeof path, "/api/v2/callsign/%s", cs);
+    adsbfi_pace();
     *stage = https_get("opendata.adsb.fi", path, status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
         parsed = decode_adsb_stream({&body, body_byte}, s->doc, s->row, sizeof s->row, s->staging, opts);
         return parsed == Result::Ok;
     });
     s->doc.clear();
+    adsbfi_ended();
     return !*stage && *status == 200 && parsed == Result::Ok && s->staging.count > 0;
 }
 
@@ -364,6 +383,12 @@ void live_step(uint32_t now){
  * position (/flights/{id}/position) only when adsb.fi cannot see a flight that
  * FlightAware says is in the air, every 5 minutes. */
 constexpr uint32_t TrackEveryMs = 60000;
+constexpr uint32_t TrackRetryMs = 20000;           /* after a lookup that missed a flight on the panel */
+/* A tracked flight on the panel stays there, with what was last seen, until
+ * adsb.fi has not seen it for this long: a lookup or two missing it (a gap in
+ * coverage, a busy server) no longer swaps the panel to the nearby flights and
+ * back every minute or two. */
+constexpr uint32_t TrackHoldMs = 5 * 60000;
 constexpr uint32_t TrackLandedMs = 10 * 60000;     /* shown this long after landing */
 constexpr uint32_t TrackRestMs = 60 * 60000;       /* then not looked for again for an hour */
 constexpr uint32_t AeroRetryMs = 15 * 60000;       /* a failed FlightAware request */
@@ -456,9 +481,11 @@ void track_lookup(Target &t, uint32_t now){
     unsigned status;
     t.next_ms = now + TrackEveryMs;
     bool found = callsign_fix(t.cs, &stage, &status);
+    bool answered = !stage && status == 200;            /* a 429 or a failed request says nothing about the flight */
     uint32_t unix_now = (uint32_t)std::time(nullptr);
     if (found) t.adsb_misses = 0;
-    else if (t.adsb_misses < 255) ++t.adsb_misses;
+    else if (answered && t.adsb_misses < 255) ++t.adsb_misses;
+    if (!found && t.slot >= 0) t.next_ms = now + TrackRetryMs;
     if (found) {
         const Flight &fl = s->staging.flights[0];
         double lat = fl.latitude, lon = fl.longitude;
@@ -474,7 +501,7 @@ void track_lookup(Target &t, uint32_t now){
         }
         track_fill(t, f, lat, lon, unix_now);
         track_show(t, f, now);
-    } else if (t.slot >= 0 && now - t.seen_ms >= LiveValidMs && !(t.has_fa && t.fa.airborne)) {
+    } else if (t.slot >= 0 && now - t.seen_ms >= TrackHoldMs && !(t.has_fa && t.fa.airborne)) {
         track_release(t);                                       /* out of sight */
     }
     if (t.landed_ms && now - t.landed_ms >= TrackLandedMs) {
@@ -632,7 +659,7 @@ void track_publish(FwFeedFrame *frame, uint32_t now){
     int n = 0;
     for (int i = 0; i < s->target_count && n < TrackShown; ++i) {
         const Target &t = s->targets[i];
-        bool fresh = now - t.seen_ms < LiveValidMs || (t.has_fa && t.fa.airborne && now - t.seen_ms < AeroPositionMs + Minute);
+        bool fresh = now - t.seen_ms < TrackHoldMs || (t.has_fa && t.fa.airborne && now - t.seen_ms < AeroPositionMs + Minute);
         if (t.slot >= 0 && fresh) frame->flights[n++] = s->shown[t.slot];
     }
     if (!n) return;

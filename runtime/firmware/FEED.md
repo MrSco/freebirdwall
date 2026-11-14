@@ -70,7 +70,15 @@ wall finds them itself (`main/community.cpp`, "tracked flights"):
     times request, $0.01 per position; the dashboard counts them since start.
     On the desk the handshake fits the 48 KiB arena (peak 39,160 bytes).
 - **Shown:** with any tracked flight in sight the panel shows those (up to
-  five) as stock shows a tracked answer; otherwise the nearby flights.
+  five) as stock shows a tracked answer; otherwise the nearby flights. A
+  flight on the panel stays there, with what was last seen, until adsb.fi has
+  not seen it for **5 minutes**; after a lookup that misses it the next comes
+  in 20 s rather than a minute. A 429 or a failed request does not count as a
+  miss. (It used to be dropped after 150 s, so two misses in a row swapped the
+  panel to the nearby flights and back.)
+- **adsb.fi pacing:** area polls, the Sync leg and tracked flights all ask
+  adsb.fi from one task, each at least 1 s after the last one ended (its open
+  data allows about one request a second).
   `show_metrics` and `show_distance_travelled` are honoured; `auto_remove`
   holds a landed flight back until restart (the settings are not written).
   The "Flying over" page is skipped (no place names on this source).
