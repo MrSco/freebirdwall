@@ -7,8 +7,10 @@
  * when there are none, with the settings parsed by the same fw_feed_display().
  * What the page supplies instead of the board: the time, the settings JSON,
  * the flights (the wall's own, GET /api/flights, or samples), the airport
- * aliases and the logo files (GET /api/logo). Brightness and sleep are not in
- * the pixels on the board either; the page dims the picture itself.
+ * aliases, the logo files (GET /api/logo; none: the owned silhouette, as the
+ * wall draws it) and the weather record (GET /api/weather, or a sample).
+ * Brightness and sleep are not in the pixels on the board either; the page
+ * dims the picture itself.
  *
  * The frame is 128 x 64 RGBA (alpha 255), ready for an ImageData. */
 #include <math.h>
@@ -20,6 +22,7 @@
 #include "fw_clock.h"
 #include "fw_feed.h"
 #include "fw_logo.h"
+#include "fw_weather.h"
 #include "owner_alias.h"
 
 #ifdef __wasm__
@@ -52,11 +55,12 @@ EXPORT(pv_frame) const uint8_t *pv_frame(void){ return s_fb; }
 
 /* ------------------------------------------------------------ logos */
 
-/* Decoded logos by airline code and aircraft class, as the wall resolves them
- * (the page fetches /api/logo?al=..&ac=.. for each one asked for). */
+/* Decoded logos by airline code, aircraft class and type, as the wall
+ * resolves them (the page fetches /api/logo?al=..&ac=..&t=.. for each one
+ * asked for; nothing there means the wall draws its silhouette). */
 #define LOGOS 8
 typedef struct {
-    char al[8], ac[24];
+    char al[8], ac[24], type[8];
     int state;                 /* 0 asked for, 1 decoded, 2 none */
     uint32_t used;
     FwLogo logo;
@@ -64,50 +68,58 @@ typedef struct {
 static LogoSlot s_logos[LOGOS];
 static uint32_t s_logo_clock;
 static const FwLogo *s_shown_logo;
-static char s_shown_al[8], s_shown_ac[24];
+static char s_shown_al[8], s_shown_ac[24], s_shown_type[8];
 static int s_logo_arrived;
 
-static LogoSlot *logo_slot(const char *al, const char *ac, int add){
+static LogoSlot *logo_slot(const char *al, const char *ac, const char *type, int add){
     LogoSlot *oldest = &s_logos[0];
     for (int i = 0; i < LOGOS; ++i) {
         LogoSlot *l = &s_logos[i];
-        if (l->al[0] && !strcmp(l->al, al) && !strcmp(l->ac, ac)) return l;
+        if ((l->al[0] || l->type[0] || l->ac[0]) && !strcmp(l->al, al) && !strcmp(l->ac, ac) && !strcmp(l->type, type))
+            return l;
         if (l->used < oldest->used) oldest = l;
     }
     if (!add) return NULL;
     memset(oldest, 0, sizeof *oldest - sizeof oldest->logo);
     snprintf(oldest->al, sizeof oldest->al, "%s", al);
     snprintf(oldest->ac, sizeof oldest->ac, "%s", ac);
+    snprintf(oldest->type, sizeof oldest->type, "%s", type);
     oldest->used = ++s_logo_clock;
     return oldest;
 }
 
+static bool is_shown(const FwFlight *f){
+    return !strcmp(s_shown_al, f->al_code) && !strcmp(s_shown_ac, f->ac_class) && !strcmp(s_shown_type, f->ac_type);
+}
+
 /* display.cpp load_logo: the logo for the flight about to be drawn. */
-static void load_logo(const char *al, const char *ac){
-    LogoSlot *l = logo_slot(al, ac ? ac : "", 1);
+static void load_logo(const FwFlight *f){
+    LogoSlot *l = logo_slot(f->al_code, f->ac_class, f->ac_type, 1);
     l->used = ++s_logo_clock;
-    snprintf(s_shown_al, sizeof s_shown_al, "%s", al);
-    snprintf(s_shown_ac, sizeof s_shown_ac, "%s", ac ? ac : "");
+    snprintf(s_shown_al, sizeof s_shown_al, "%s", f->al_code);
+    snprintf(s_shown_ac, sizeof s_shown_ac, "%s", f->ac_class);
+    snprintf(s_shown_type, sizeof s_shown_type, "%s", f->ac_type);
     s_shown_logo = l->state == 1 ? &l->logo : NULL;
 }
 
 /* The i-th logo the screens asked for and the page has not supplied yet, as
- * "AL|class", or NULL. */
+ * "AL|class|type", or NULL. */
 EXPORT(pv_logo_wanted) const char *pv_logo_wanted(int i){
-    static char key[40];
+    static char key[48];
     for (int k = 0; k < LOGOS; ++k) {
-        if (!s_logos[k].al[0] || s_logos[k].state) continue;
+        if (!s_logos[k].used || s_logos[k].state) continue;
         if (i-- == 0) {
-            snprintf(key, sizeof key, "%s|%s", s_logos[k].al, s_logos[k].ac);
+            snprintf(key, sizeof key, "%s|%s|%s", s_logos[k].al, s_logos[k].ac, s_logos[k].type);
             return key;
         }
     }
     return NULL;
 }
 
-/* The logo file for al/ac (len 0: the wall has none). */
-EXPORT(pv_logo) void pv_logo(const char *al, const char *ac, const uint8_t *png, size_t len){
-    LogoSlot *l = logo_slot(al, ac, 1);
+/* The picture file for al/ac/type (len 0: the wall has none, so it draws the
+ * owned silhouette of the type's family, as fw_logo_resolve_42). */
+EXPORT(pv_logo) void pv_logo(const char *al, const char *ac, const char *type, const uint8_t *png, size_t len){
+    LogoSlot *l = logo_slot(al, ac, type, 1);
     void *dec;
     const FwElement *box = &fw_layout_mini_default[0];
     l->state = 2;
@@ -115,7 +127,14 @@ EXPORT(pv_logo) void pv_logo(const char *al, const char *ac, const uint8_t *png,
         if (fw_logo_decode(dec, png, len, fw_logo_side_for_box(box->w, box->h), &l->logo) == FW_LOGO_OK) l->state = 1;
         free(dec);
     }
-    if (!strcmp(al, s_shown_al) && !strcmp(ac, s_shown_ac)) {   /* the card on show: draw it again with it */
+    if (l->state != 1) {
+        int family = fw_aircraft_family(type);
+        if (!family)
+            family = !strcmp(ac, "Heli") ? FW_FAMILY_HELI : !strcmp(ac, "Light") ? FW_FAMILY_LIGHT
+                   : !strcmp(ac, "Smalljet") ? FW_FAMILY_SMALLJET : FW_FAMILY_DEFAULT;
+        if (fw_silhouette(family, fw_logo_side_for_box(box->w, box->h), &l->logo) == FW_LOGO_OK) l->state = 1;
+    }
+    if (!strcmp(al, s_shown_al) && !strcmp(ac, s_shown_ac) && !strcmp(type, s_shown_type)) {   /* on show: draw it again */
         s_shown_logo = l->state == 1 ? &l->logo : NULL;
         s_logo_arrived = 1;
     }
@@ -200,6 +219,12 @@ EXPORT(pv_settings) void pv_settings(const char *json){
     s_st.anchor_count = d->anchor_count;
     s_st.alias = alias_lookup;
     s_st.progress = d->progress_bar;
+    s_st.flight_number = d->flight_number;          /* 4.2: flight number, formats, slots */
+    s_st.alt_format = d->alt_format;
+    s_st.vel_format = d->vel_format;
+    s_st.vr_format = d->vr_format;
+    s_st.trk_format = d->trk_format;
+    memcpy(s_st.slots, d->slots, sizeof s_st.slots);
     s_frame.border = d->border;
     s_frame.border_percent = d->border_percent;
     s_frame.indicator = false;
@@ -282,6 +307,7 @@ EXPORT(pv_flights) void pv_flights(const char *json){
         str(f->al_op, sizeof f->al_op, a, "al_op"); str(f->al_name, sizeof f->al_name, a, "al_name");
         str(f->ac_type, sizeof f->ac_type, a, "ac_type"); str(f->ac_name, sizeof f->ac_name, a, "ac_name");
         str(f->ac_class, sizeof f->ac_class, a, "ac_class");
+        str(f->fn, sizeof f->fn, a, "fn"); str(f->al_short, sizeof f->al_short, a, "al_short");
         f->has_trk = flag(a, "has_trk");
         sts = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(a, "sts"));
         f->sts = sts && (*sts == 'C' || *sts == 'D') ? *sts : 0;
@@ -332,8 +358,84 @@ static void clock_enter(void){
 
 static int clock_set(void){ return s_unix > 1700000000; }
 
+/* ------------------------------------------------------------ weather (display.cpp weather_screen) */
+
+static FwWeather s_wx;
+static int s_wx_given;                   /* the page sent the wall's record */
+static uint32_t s_wx_rows[FW_WX_ROWS], s_wx_t0, s_wx_at;
+static FwWxFrame s_wx_frame;
+static int s_wx_on;
+static char s_wx_icon[24];
+static uint8_t s_wx_layout, s_wx_nrow;
+
+/* The wall's weather record as GET /api/weather gives it (the feed's keys), or {} for none. */
+EXPORT(pv_weather) void pv_weather(const char *json){
+    cJSON *root = cJSON_Parse(json), *it;
+    fw_weather_init(&s_wx);
+    cJSON_ArrayForEach(it, root) {
+        if (cJSON_IsString(it)) fw_weather_set_str(&s_wx, it->string, it->valuestring);
+        else if (cJSON_IsBool(it)) fw_weather_set_bool(&s_wx, it->string, cJSON_IsTrue(it));
+        else if (cJSON_IsNumber(it)) fw_weather_set_num(&s_wx, it->string, it->valuedouble);
+    }
+    cJSON_Delete(root);
+    s_wx_given = fw_weather_valid(&s_wx);
+    s_wx_on = 0;
+}
+
+/* A sample when the wall has none yet: what a nearby airport might report. */
+static void weather_sample(void){
+    fw_weather_init(&s_wx);
+    fw_weather_set_str(&s_wx, "stn", "KFLL");
+    fw_weather_set_str(&s_wx, "name", "Ft Lauderdale");
+    fw_weather_set_str(&s_wx, "raw", "KFLL 171753Z 09015G26KT 10SM SCT025 BKN047 27/21 A3011 RMK AO2");
+    fw_weather_set_str(&s_wx, "cat", "VFR");
+    fw_weather_set_str(&s_wx, "cond", "partly_cloudy");
+    fw_weather_set_num(&s_wx, "obs", s_unix - 600);
+    fw_weather_set_num(&s_wx, "wdir", 90); fw_weather_set_num(&s_wx, "wspd", 15); fw_weather_set_num(&s_wx, "wgst", 26);
+    fw_weather_set_num(&s_wx, "vis_m", 16093); fw_weather_set_bool(&s_wx, "vis_plus", true);
+    fw_weather_set_num(&s_wx, "ceil_ft", 4700); fw_weather_set_num(&s_wx, "temp_c", 27);
+}
+
+static bool weather_screen(bool enter){
+    FwWeatherSettings ws;
+    bool full;
+    if (!s_disp.weather_enabled) { s_wx_on = 0; return false; }
+    if (!s_wx_given) weather_sample();
+    if (!fw_weather_valid(&s_wx) || fw_weather_age(&s_wx, (int64_t)s_unix) > FW_WX_STALE_S) { s_wx_on = 0; return false; }
+    if (s_wx_on && !enter && s_now - s_wx_at < 200) return true;
+    s_wx_at = s_now;
+    if (!s_wx_on) s_wx_t0 = s_now;
+    memset(&ws, 0, sizeof ws);
+    ws.layout = s_disp.weather_layout;
+    ws.temp_unit = s_disp.temp_unit;
+    ws.wind_unit = s_disp.wind_unit;
+    ws.vis_unit = s_disp.vis_unit;
+    ws.ceil_unit = s_disp.ceil_unit;
+    ws.is_24h = s_clock.is_24h;
+    ws.show_seconds = s_clock.show_seconds;
+    ws.zone = s_clock.zone;
+    fw_weather_frame(&s_wx, &ws, (int64_t)s_unix, s_now - s_wx_t0, &s_wx_frame);
+    full = enter || !s_wx_on || s_wx_frame.layout != s_wx_layout || s_wx_frame.nrow != s_wx_nrow ||
+           strcmp(s_wx_frame.icon, s_wx_icon);
+    if (full) {
+        fw_clear(&S);
+        if (s_wx_frame.icon[0]) fw_weather_icon_draw(&S, 4, 6, s_wx_frame.icon);
+        memset(s_wx_rows, 0, sizeof s_wx_rows);
+        s_wx_layout = s_wx_frame.layout;
+        s_wx_nrow = s_wx_frame.nrow;
+        snprintf(s_wx_icon, sizeof s_wx_icon, "%s", s_wx_frame.icon);
+    }
+    fw_weather_draw_rows(&S, &s_wx_frame, s_wx_rows);
+    s_wx_on = 1;
+    return true;
+}
+
 static void live_empty(bool enter){
     const char *t = s_disp.loading;
+    int was = s_wx_on;
+    if (!strcmp(t, "CLOCK") && weather_screen(enter)) return;
+    s_wx_on = 0;
+    if (was) enter = true;
     if (!strcmp(t, "CLOCK") && clock_set()) {
         if (enter) clock_enter(); else clock_refresh();
     } else if (enter) {
@@ -344,7 +446,7 @@ static void live_empty(bool enter){
 
 static void tracked_draw(void){
     const FwFlight *f = &s_live.flights[s_trk_flight];
-    if (strcmp(s_shown_al, f->al_code) || strcmp(s_shown_ac, f->ac_class)) load_logo(f->al_code, f->ac_class);
+    if (!is_shown(f)) load_logo(f);
     fw_screen_tracked(&S, &s_st, f, s_trk_pages[s_trk_page_i], (int64_t)s_unix, s_shown_logo);
     fw_screen_frame(&S, &s_frame);
     card_drawn();
@@ -387,7 +489,7 @@ static void rotation_tick(bool redraw_anyway){
                 f = &s_live.flights[i];
     }
     if (show == FW_SHOW_FLIGHT && f) {
-        if (strcmp(s_shown_al, f->al_code) || strcmp(s_shown_ac, f->ac_class)) load_logo(f->al_code, f->ac_class);
+        if (!is_shown(f)) load_logo(f);
         fw_screen_flight(&S, &s_st, f, s_shown_logo);
         fw_screen_frame(&S, &s_frame);
         card_drawn();

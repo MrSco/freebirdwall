@@ -458,3 +458,17 @@ Otherwise:
 - What sets the force-HTTP flag.
 - Server behaviour with no status reports or a stale hash.
 - Server-side 401/429 semantics.
+
+## Vendor 4.2 changes (app 4.2.4)
+
+- The request body is unchanged.
+- Response: top-level keys are read to 7 characters (was 3); `weather`
+  (WEATHER.md) and `hl` (a "highlight", skipped) are new. Records add `fn`
+  (IATA flight number, 1–11, first a letter or digit), `al_short` (≤30 bytes)
+  and `ac_icao` (the ICAO type; kept in `ac_type` when that is empty);
+  `al_name` grows to 35 bytes, a cut UTF-8 tail removed. A wrongly typed new
+  field is skipped instead of failing the response.
+- Followed flights dropping off 5, 15 or 30 minutes after landing is decided
+  on the vendor's server (`auto_remove` is unchanged on the device). On the
+  community source the wall shows a landed tracked flight for
+  `owned_config.tracked_landed_minutes` (5, 15 or 30; default 15, was 10).

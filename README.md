@@ -14,6 +14,11 @@ keeps everything the wall already does, needs no subscription, and adds:
 - **Tracked flights**, with real times when you add a FlightAware key.
 - **Stats** of the planes your wall has seen, **extra clocks**, and **your own airport names**.
 - **Names that fit.** Long airline and airport names are shortened, and scroll if they are still too long.
+- **Everything from FlightWall 4.1 and 4.2, and more.** Live METAR **weather** when no planes are overhead (Simple,
+  Summary or raw METAR), on the free flight data too; **custom lines** on the flight card; **aircraft silhouettes**
+  when there is no airline logo (by exact type when the wall has the pictures); flight levels, short numbers, the
+  flight number instead of the callsign, up to 30 seconds on each flight. The wall keeps the maker's logos and icons
+  current from their own signed updates.
 
 You can go back to the original firmware at any time: it stays on the wall, next to FreeBirdWall.
 
@@ -205,7 +210,9 @@ mode with only Wi-Fi. Plug in USB, open the installer, and use **Start the vendo
 
 FreeBirdWall is MIT-licensed (`LICENSE`); third-party code keeps its own licence (`THIRD-PARTY-NOTICES.md`). It
 started as a reverse-engineering study of the vendor firmware, so the design notes cite where stock behaviour was
-found (the `FUN_…` addresses refer to the vendor's application image). No vendor code or images are included; three
+found (the `FUN_…` addresses refer to the vendor's application image). No vendor code or images are included; four
 small data tables were read out of the vendor firmware so the wall looks the same: the extra text glyphs
-(`fw_text/vendor_charmap.c`), the clock's date glyphs (`fw_clock/clock_tables.c`) and the screen layouts
-(`vendor-layouts.json`).
+(`fw_text/vendor_charmap.c`), the clock's date glyphs (`fw_clock/clock_tables.c`), the screen layouts
+(`vendor-layouts.json`) and the aircraft types' silhouette families (`fw_logo/aircraft_families.c`). The vendor's
+logos, icons and pictures are never in this repository: the wall downloads them from the maker's own update server
+and checks the maker's signature.

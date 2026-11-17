@@ -46,6 +46,8 @@ static void flight(const FwFlight *f){
     printf(",\"al_code\":"); js(f->al_code); printf(",\"al_paint\":"); js(f->al_paint); printf(",\"al_op\":"); js(f->al_op);
     printf(",\"al_name\":"); js(f->al_name); printf(",\"ac_type\":"); js(f->ac_type); printf(",\"ac_name\":"); js(f->ac_name);
     printf(",\"ac_class\":"); js(f->ac_class);
+    printf(",\"fn\":"); js(f->fn); printf(",\"al_short\":"); js(f->al_short); 
+    printf(",\"al_name_cut\":%s,\"al_short_cut\":%s", f->al_name_cut ? "true" : "false", f->al_short_cut ? "true" : "false");
     printf(",\"has_trk\":%s,\"sts\":\"%s\",\"sexp\":%lld", f->has_trk ? "true" : "false", f->sts ? (char[2]){f->sts, 0} : "",
            (long long)f->sexp);
     printf(",\"prog\":"); jd(f->prog); printf(",\"dist\":"); jd(f->dist);
@@ -65,7 +67,8 @@ int main(int argc, char **argv){
     if (argc != 3 || !(b = slurp(argv[2], &n))) return 2;
     if (!strcmp(argv[1], "parse")) {
         static FwFeedFrame fr;
-        int rc = fw_feed_parse(b, n, &fr);
+        static FwWeather wx;
+        int rc = fw_feed_parse(b, n, &fr, &wx);
         printf("{\"rc\":%d,\"count\":%d,\"tracked\":%s,\"overflow\":%d,\"ch\":", rc, fr.count, fr.tracked ? "true" : "false",
                fr.overflow);
         js(fr.config_hash);
@@ -77,6 +80,18 @@ int main(int argc, char **argv){
         for (int i = 0; i < fr.upcoming_count; ++i) { if (i) putchar(','); leg(&fr.upcoming[i]); }
         printf("],\"message\":");
         js(fr.message);
+        {
+            const FwWeather *w = &wx;
+            printf(",\"weather\":{\"valid\":%s,\"stn\":", fw_weather_valid(w) ? "true" : "false"); js(w->stn);
+            printf(",\"name\":"); js(w->name); printf(",\"raw\":"); js(w->raw);
+            printf(",\"cat\":%u,\"cond\":%u,\"obs\":%u,\"utc_at\":%u", w->cat, w->cond, (unsigned)w->obs, (unsigned)w->utc_at);
+            printf(",\"wdir\":%d,\"wspd\":%d,\"wgst\":%d,\"vis_m\":%d,\"ceil_ft\":%d,\"temp_c\":%d,\"utc_off\":%d,\"utc_next\":%d",
+                   w->has_wdir ? w->wdir : -1, w->has_wspd ? w->wspd : -1, w->has_wgst ? w->wgst : -1,
+                   w->has_vis ? w->vis_m : -1, w->has_ceil ? w->ceil_ft : -1, w->has_temp ? w->temp_c : -999,
+                   w->has_utc_off ? w->utc_off : -999, w->has_utc_next ? w->utc_next : -999);
+            printf(",\"auto\":%s,\"night\":%s,\"wvar\":%s,\"vis_plus\":%s}", w->is_auto ? "true" : "false",
+                   w->night ? "true" : "false", w->wvar ? "true" : "false", w->vis_plus ? "true" : "false");
+        }
         printf("}\n");
     } else if (!strcmp(argv[1], "http")) {
         /* the response fed in chunks of 1, 2, 3, ... bytes, as a socket might */
@@ -132,6 +147,12 @@ int main(int argc, char **argv){
                d.clock_show_date ? "true" : "false", d.clock_day_first ? "true" : "false", d.clock_weekday ? "true" : "false");
         js(d.locale);
         printf(",\"heartbeat\":%s", d.heartbeat_enabled ? "true" : "false");
+        printf(",\"flight_number\":%s,\"formats\":[%d,%d,%d,%d],\"slots\":[", d.flight_number ? "true" : "false",
+               d.alt_format, d.vel_format, d.vr_format, d.trk_format);
+        for (int i = 0; i < FW_SLOTS_MAX; ++i) printf("%s%d", i ? "," : "", d.slots[i]);
+        printf("],\"weather\":[%s,%d,%d,%d,%d,%d],\"station\":", d.weather_enabled ? "true" : "false", d.weather_layout,
+               d.temp_unit, d.wind_unit, d.vis_unit, d.ceil_unit);
+        js(d.weather_station);
         printf(",\"enabled\":%s,\"has_sleep\":%s,\"sleep\":[%d,%d,%d],\"scroll\":%u}\n", d.display_enabled ? "true" : "false",
                d.has_sleep ? "true" : "false", d.sleep_start_min, d.sleep_end_min, d.sleep_percent, (unsigned)d.scroll_px_ms);
     } else {

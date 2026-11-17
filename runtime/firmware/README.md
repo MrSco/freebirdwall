@@ -19,7 +19,8 @@ log. For owners, start with the [beginner's guide](../../README.md).
 | [SETTINGS.md](SETTINGS.md) | The owned settings, the app's changes, the dashboard API |
 | [DASHBOARD.md](DASHBOARD.md) | The dashboard page |
 | [SYNC.md](SYNC.md) | Plus Sync as stock does it, and the owned Sync |
-| [CLOCK.md](CLOCK.md), [LOGOS.md](LOGOS.md), [GAMES.md](GAMES.md), [ANALYTICS.md](ANALYTICS.md) | Clock, logos, games, stats |
+| [CLOCK.md](CLOCK.md), [LOGOS.md](LOGOS.md), [GAMES.md](GAMES.md), [ANALYTICS.md](ANALYTICS.md) | Clock, logos and silhouettes, games, stats |
+| [WEATHER.md](WEATHER.md) | METAR weather when no flights are nearby (vendor 4.1/4.2, and the owned aviationweather.gov source) |
 | [SETUP.md](SETUP.md) | Setup mode, Wi-Fi join and reconnect rules |
 | [UPDATES.md](UPDATES.md) | Wi-Fi updates, switching firmware, the Wi-Fi log, the board check, safe mode |
 

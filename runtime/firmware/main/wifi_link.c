@@ -39,6 +39,12 @@ static FwLinkView s_view;
 static volatile bool s_connected, s_auto;
 static volatile uint8_t s_last_reason;
 static unsigned s_attempts;
+/* Vendor 4.2's "Wi-Fi fix for some routers" (FEED.md "4.2"): it joins in
+ * 802.11b/g and allows b/g/n after two attempts in a row time out. Owned: the
+ * other way round, so walls that join today keep b/g/n; two timed-out attempts
+ * in a row switch between b/g/n and b/g (RAM only, until restart). */
+static bool s_bg_only;
+static unsigned s_timeouts;
 static int s_fail_left = CONFIG_FW_WIFI_FAIL_ATTEMPTS;
 #if CONFIG_FW_WIFI_DROP_AFTER_S > 0
 static bool s_dropped;
@@ -62,6 +68,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data){
         xEventGroupSetBits(s_events, BIT_STARTED);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         s_connected = true;
+        s_timeouts = 0;
         ++s_connections;
     } else if (base == IP_EVENT && id == IP_EVENT_STA_LOST_IP) {
         s_connected = false;
@@ -106,7 +113,7 @@ static int pick(void){
 static void attempt(void){
     wifi_config_t c;
     int i = pick();
-    char extra[64];
+    char extra[96];
     bool test_fail = s_fail_left > 0;
     if (test_fail) {
         --s_fail_left;
@@ -116,19 +123,22 @@ static void attempt(void){
     }
     ++s_attempts;
     s_auto = true;
+    esp_wifi_set_protocol(WIFI_IF_STA, s_bg_only ? (WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G)
+                                                 : (WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N));
     esp_wifi_set_config(WIFI_IF_STA, &c);      /* RAM storage: never persisted */
     memset(&c, 0, sizeof c);
     esp_wifi_connect();
-    snprintf(extra, sizeof extra, "\"n\":%u,\"network\":%d,\"saved\":%d,\"test_fail\":%s", s_attempts, i,
-             s_nets.count, test_fail ? "true" : "false");
+    snprintf(extra, sizeof extra, "\"n\":%u,\"network\":%d,\"saved\":%d,\"test_fail\":%s,\"bg_only\":%s", s_attempts, i,
+             s_nets.count, test_fail ? "true" : "false", s_bg_only ? "true" : "false");
     fw_mem_report("wifi_attempt", extra);
 }
 
 static void abort_attempt(void){
-    char extra[32];
+    char extra[64];
     s_auto = false;
     esp_wifi_disconnect();
-    snprintf(extra, sizeof extra, "\"reason\":%u", (unsigned)s_last_reason);
+    if (!s_connected && ++s_timeouts % 2 == 0) s_bg_only = !s_bg_only;   /* the next attempt tries the other mode */
+    snprintf(extra, sizeof extra, "\"reason\":%u,\"timeouts\":%u", (unsigned)s_last_reason, s_timeouts);
     fw_mem_report("wifi_abort", extra);
 }
 

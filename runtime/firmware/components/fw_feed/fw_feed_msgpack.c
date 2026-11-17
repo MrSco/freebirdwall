@@ -7,8 +7,11 @@
  *  - bools: true/false, positive fixint; nil -> false;
  *  - unknown keys are skipped (nesting up to 16);
  *  - any wrongly typed value rejects the whole response.
- * Keys are compared after the same truncation stock applies: 3 characters at
- * the top level, 11 in a record, 7 in trk_info / deltas. */
+ * Keys are compared after the same truncation stock applies: 7 characters at
+ * the top level (3 before 4.2), 11 in a record, 7 in trk_info / deltas.
+ * 4.2 additions (FEED.md "4.2"): the record's fn, al_short and ac_icao (kept
+ * in ac_type when that is empty) are skipped, not fatal, when wrongly typed; the top-level "weather" record
+ * (FUN_4201085c) keeps only values of the right kind. */
 #include "fw_feed.h"
 #include <math.h>
 #include <string.h>
@@ -117,6 +120,34 @@ static void read_str(Rd *r, char *out, size_t cap){
 }
 
 static void skip(Rd *r, int depth);
+
+static bool is_str(Rd *r){
+    uint8_t t;
+    if (!need(r, 1)) return false;
+    t = *r->p;
+    return (t & 0xe0) == 0xa0 || t == 0xd9 || t == 0xda || t == 0xdb || t == 0xc0;
+}
+
+/* 4.2's new string fields: a wrongly typed value is skipped. *cut: the string
+ * was longer than the field (a broken UTF-8 tail is then removed). */
+static void utf8_tail(char *s);
+static void read_str_soft(Rd *r, char *out, size_t cap, bool *cut){
+    uint8_t t;
+    size_t n = 0;
+    if (cut) *cut = false;
+    if (!is_str(r)) { if (cap) out[0] = 0; skip(r, 1); return; }
+    t = r->p[0];                                   /* the string's length, from its header */
+    if ((t & 0xe0) == 0xa0) n = t & 0x1f;
+    else if (t == 0xd9 && r->end - r->p >= 2) n = r->p[1];
+    else if (t == 0xda && r->end - r->p >= 3) n = (size_t)r->p[1] << 8 | r->p[2];
+    else if (t == 0xdb && r->end - r->p >= 5)
+        n = (size_t)r->p[1] << 24 | (size_t)r->p[2] << 16 | (size_t)r->p[3] << 8 | r->p[4];
+    read_str(r, out, cap);
+    if (!r->bad && cap && n > cap - 1) {
+        if (cut) *cut = true;
+        utf8_tail(out);
+    }
+}
 
 static void skip_n(Rd *r, uint64_t n, int depth){
     for (uint64_t i = 0; i < n && !r->bad; ++i) skip(r, depth);
@@ -254,7 +285,19 @@ static void read_record(Rd *r, FwFlight *f){
         else if (!strcmp(key, "al_code")) read_str(r, f->al_code, 8);
         else if (!strcmp(key, "al_paint")) read_str(r, f->al_paint, 8);
         else if (!strcmp(key, "al_op")) read_str(r, f->al_op, 8);
-        else if (!strcmp(key, "al_name")) read_str(r, f->al_name, 24);
+        else if (!strcmp(key, "al_name")) read_str_soft(r, f->al_name, sizeof f->al_name, &f->al_name_cut);
+        else if (!strcmp(key, "al_short")) read_str_soft(r, f->al_short, sizeof f->al_short, &f->al_short_cut);
+        else if (!strcmp(key, "fn")) {
+            read_str_soft(r, f->fn, sizeof f->fn, NULL);     /* FUN_420087d8: 1..11, first a letter or digit */
+            if (!((f->fn[0] >= 'A' && f->fn[0] <= 'Z') || (f->fn[0] >= 'a' && f->fn[0] <= 'z') ||
+                  (f->fn[0] >= '0' && f->fn[0] <= '9')))
+                f->fn[0] = 0;
+        }
+        else if (!strcmp(key, "ac_icao")) {               /* 4.2: the type for the silhouette, kept in ac_type */
+            char t[8];
+            read_str_soft(r, t, sizeof t, NULL);
+            if (!f->ac_type[0]) memcpy(f->ac_type, t, sizeof t);
+        }
         else if (!strcmp(key, "ac_type")) read_str(r, f->ac_type, 16);
         else if (!strcmp(key, "ac_name")) read_str(r, f->ac_name, 32);
         else if (!strcmp(key, "ac_class")) read_str(r, f->ac_class, 16);
@@ -297,19 +340,50 @@ static void utf8_tail(char *s){
     if (n - (i - 1) < need) s[i - 1] = 0;
 }
 
-int fw_feed_parse(const uint8_t *body, size_t len, FwFeedFrame *out){
+/* "weather" (FUN_4201085c): strings, numbers and bools by key; a value of
+ * another kind is skipped. */
+static void read_weather(Rd *r, FwWeather *w){
+    uint32_t n = read_map(r);
+    fw_weather_init(w);
+    for (uint32_t i = 0; i < n && !r->bad; ++i) {
+        char key[10];
+        uint8_t t;
+        read_str(r, key, sizeof key);
+        if (r->bad || !need(r, 1)) return;
+        t = *r->p;
+        if ((t & 0xe0) == 0xa0 || t == 0xd9 || t == 0xda || t == 0xdb) {
+            char v[300];
+            read_str(r, v, sizeof v);
+            fw_weather_set_str(w, key, v);
+        } else if (t == 0xc2 || t == 0xc3) {
+            fw_weather_set_bool(w, key, byte(r) == 0xc3);
+        } else if (t <= 0x7f || t >= 0xe0 || (t >= 0xca && t <= 0xd3)) {
+            fw_weather_set_num(w, key, read_double(r));
+        } else {
+            skip(r, 2);
+        }
+    }
+}
+
+int fw_feed_parse(const uint8_t *body, size_t len, FwFeedFrame *out, FwWeather *weather){
     Rd r = {body, body + len, false};
     uint32_t n;
     int version_bad = 0;
+    FwWeather skip_wx;
     memset(out, 0, sizeof *out);
+    if (!weather) weather = &skip_wx;
+    fw_weather_init(weather);
     if (!body || !len) return FW_FEED_ERR_FORMAT;
     if (!need(&r, 1) || !((*r.p & 0xf0) == 0x80 || *r.p == 0xde || *r.p == 0xdf)) return FW_FEED_ERR_FORMAT;
     n = read_map(&r);
     for (uint32_t i = 0; i < n && !r.bad; ++i) {
-        char key[4];
+        char key[8];
         read_str(&r, key, sizeof key);
         if (r.bad) break;
-        if (!strcmp(key, "v")) {
+        if (!strcmp(key, "weather")) {
+            if (need(&r, 1) && ((*r.p & 0xf0) == 0x80 || *r.p == 0xde || *r.p == 0xdf)) read_weather(&r, weather);
+            else skip(&r, 1);
+        } else if (!strcmp(key, "v")) {
             if (read_int(&r) > 1) version_bad = 1;
         } else if (!strcmp(key, "f") || !strcmp(key, "tf")) {
             uint32_t m = read_array(&r);
@@ -346,10 +420,12 @@ int fw_feed_parse(const uint8_t *body, size_t len, FwFeedFrame *out){
     }
     if (r.bad) {
         memset(out, 0, sizeof *out);
+        fw_weather_init(weather);
         return FW_FEED_ERR_FORMAT;
     }
     if (version_bad) {
         memset(out, 0, sizeof *out);
+        fw_weather_init(weather);
         return FW_FEED_ERR_VERSION;
     }
     return FW_FEED_OK;

@@ -23,6 +23,8 @@
 #include "fw_schedule.h"
 #include "community.h"
 #include "fw_canvas.h"
+#include "fw_weather.h"
+#include "weather.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <cstddef>
@@ -93,11 +95,11 @@ FwLogo s_logo_a;
 FwLogo *s_logo_b;                 /* the spare, heap, made on the first wait */
 FwLogo *s_shown_logo = &s_logo_a; /* decoded logo for s_logo_code */
 bool s_logo_ok;
-char s_logo_code[8];
+char s_logo_code[48];               /* the logo's key (logo_key): airline | type | class */
 bool s_logo_pending;              /* the shown flight still needs its logo */
 bool s_logo_waited;               /* a logo has had to wait at least once */
 bool s_ahead_ready, s_ahead_ok;   /* the spare slot holds s_ahead_code's logo */
-char s_ahead_code[8], s_ahead_class[24];
+char s_ahead_code[48];
 
 FwLogo *shown_logo(){ return s_logo_ok ? s_shown_logo : nullptr; }
 FwLogo *spare_slot(){ return s_shown_logo == &s_logo_a ? s_logo_b : &s_logo_a; }
@@ -111,20 +113,45 @@ void *take_decoder(){
     return fw_big_take(0);
 }
 
-/* Resolves and decodes a flight's logo the way the stock firmware does
- * (LOGOS.md), from the read-only vendor asset partition, into out. The decoder
- * (~44 KiB) lives in the shared block (big_buffer.h) meanwhile. Returns 1
- * decoded, 0 no logo, -1 the block is busy (nothing changed). */
-int decode_logo(const char *al_code, const char *ac_class, FwLogo *out, bool ahead){
-    char path_buf[FW_LOGO_PATH_MAX], extra[200];
+/* What decides a flight's picture (4.2, LOGOS.md "Silhouettes"): the
+ * airline, the aircraft type and its class, as one key "AAL|B738|Commercial". */
+const char *logo_key(const char *al_code, const char *type, const char *ac_class){
+    static char key[48];
+    std::snprintf(key, sizeof key, "%.7s|%.7s|%.23s", al_code ? al_code : "", type ? type : "", ac_class ? ac_class : "");
+    return key;
+}
+const char *logo_key(const FwFlight *f){ return logo_key(f->al_code, f->ac_type, f->ac_class); }
+
+/* Resolves and decodes a flight's picture into out: the airline's logo, else
+ * (vendor 4.2) the aircraft's: its type's picture when the filesystem has one,
+ * else the owned drawing of its family. PNGs come from the read-only vendor
+ * asset partition; the decoder (~44 KiB) lives in the shared block
+ * (big_buffer.h) meanwhile. Returns 1 decoded, 0 no logo, -1 the block is
+ * busy (nothing changed). */
+int decode_logo(const char *key, FwLogo *out, bool ahead){
+    char path_buf[FW_LOGO_PATH_MAX], extra[200], parts[3][24] = {{0}};
     const FwElement &box = fw_layout_mini_default[0];
     int64_t t0 = esp_timer_get_time();
-    if (!s_assets_mounted && !(s_assets_mounted = fw_assets_mount_partition())) {
-        fw_mem_report("logo_assets_mount_failed", nullptr);
-        return 0;
+    for (int i = 0, k = 0, n = 0; key[k] && i < 3; ++k) {
+        if (key[k] == '|') { ++i; n = 0; continue; }
+        if (n < 23) parts[i][n++] = key[k];
     }
-    const char *path = fw_logo_resolve(al_code, ac_class, asset_exists, nullptr, path_buf, sizeof path_buf);
-    int n = path ? fw_assets_read_file(path, s_logo_file, sizeof s_logo_file) : -1;
+    if (!(s_assets_mounted = fw_assets_mount_partition()) && !fw_assets_held()) {
+        static bool told;                          /* drawn as silhouettes meanwhile */
+        if (!told) fw_mem_report("logo_assets_mount_failed", nullptr);
+        told = true;
+    }
+    const char *path = fw_logo_resolve_42(parts[0], parts[1], parts[2], asset_exists, nullptr, path_buf, sizeof path_buf);
+    if (path && path[0] == '@') {                     /* the owned silhouette: no file, no decoder */
+        int rc = fw_silhouette(fw_family_parse(path + 1), fw_logo_side_for_box(box.w, box.h), out);
+        static unsigned drawn;
+        if (++drawn <= 3 || drawn % 50 == 0) {
+            std::snprintf(extra, sizeof extra, "\"family\":\"%s\",\"ahead\":%s", path + 1, ahead ? "true" : "false");
+            fw_mem_report("logo_silhouette", extra);
+        }
+        return rc == FW_LOGO_OK ? 1 : 0;
+    }
+    int n = path && s_assets_mounted ? fw_assets_read_file(path, s_logo_file, sizeof s_logo_file) : -1;
     if (n <= 0) { fw_mem_report("logo_read_failed", nullptr); return 0; }
     void *decoder = take_decoder();
     if (!decoder) return -1;
@@ -138,10 +165,10 @@ int decode_logo(const char *al_code, const char *ac_class, FwLogo *out, bool ahe
     return rc == FW_LOGO_OK ? 1 : 0;
 }
 
-/* The logo for the flight about to be drawn. Only one logo is shown at a time. */
-void load_logo(const char *al_code, const char *ac_class){
-    std::snprintf(s_logo_code, sizeof s_logo_code, "%s", al_code);
-    if (s_ahead_ready && !std::strcmp(s_ahead_code, al_code) && !std::strcmp(s_ahead_class, ac_class ? ac_class : "")) {
+/* The logo for the flight about to be drawn (key: logo_key). Only one logo is shown at a time. */
+void load_logo(const char *key){
+    std::snprintf(s_logo_code, sizeof s_logo_code, "%s", key);
+    if (s_ahead_ready && !std::strcmp(s_ahead_code, key)) {
         s_shown_logo = spare_slot();               /* decoded ahead: swap it in */
         s_logo_ok = s_ahead_ok;
         s_ahead_ready = false;
@@ -149,7 +176,7 @@ void load_logo(const char *al_code, const char *ac_class){
         fw_big_want(false);
         return;
     }
-    int r = decode_logo(al_code, ac_class, s_shown_logo, false);
+    int r = decode_logo(s_logo_code, s_shown_logo, false);
     if (r < 0) {                                   /* busy: draw without it, try again soon */
         s_logo_code[0] = 0;
         s_logo_ok = false;
@@ -166,8 +193,10 @@ void load_logo(const char *al_code, const char *ac_class){
 /* While a flight shows: the next flight's logo into the spare slot. */
 void logo_ahead(const FwFlight *next){
     if (!s_logo_waited || !next || s_logo_pending) return;
-    if (!std::strcmp(next->al_code, s_logo_code)) return;          /* the same logo stays */
-    if (s_ahead_ready && !std::strcmp(s_ahead_code, next->al_code) && !std::strcmp(s_ahead_class, next->ac_class)) return;
+    char key[48];
+    std::snprintf(key, sizeof key, "%s", logo_key(next));
+    if (!std::strcmp(key, s_logo_code)) return;                    /* the same logo stays */
+    if (s_ahead_ready && !std::strcmp(s_ahead_code, key)) return;
     if (!s_logo_b && !(s_logo_b = static_cast<FwLogo *>(heap_caps_malloc(sizeof(FwLogo), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)))) {
         fw_mem_report("logo_spare_alloc_failed", nullptr);
         s_logo_waited = false;                      /* do without; don't try every tick */
@@ -175,16 +204,15 @@ void logo_ahead(const FwFlight *next){
     }
     if (fw_big_busy()) { fw_big_want(true); return; }
     s_ahead_ready = false;                          /* the spare slot is about to change */
-    int r = decode_logo(next->al_code, next->ac_class, spare_slot(), true);
+    int r = decode_logo(key, spare_slot(), true);
     if (r < 0) { fw_big_want(true); return; }
     fw_big_want(false);
     s_ahead_ok = r > 0;
-    std::snprintf(s_ahead_code, sizeof s_ahead_code, "%s", next->al_code);
-    std::snprintf(s_ahead_class, sizeof s_ahead_class, "%s", next->ac_class);
+    std::snprintf(s_ahead_code, sizeof s_ahead_code, "%s", key);
     s_ahead_ready = true;
 }
 
-void load_demo_logo(){ load_logo("AAL", nullptr); }
+void load_demo_logo(){ load_logo(logo_key("AAL", nullptr, nullptr)); }
 
 /* ---------------------------------------------------------------- clock */
 
@@ -264,7 +292,7 @@ void tracked_draw(const FwSurface *s){
     int page = s_tracked_state < 4 ? s_tracked_state : 0;
     if (s_tracked_state == 4) { f.prog = 100; std::strcpy(f.tft, "1h 52m"); }
     if (s_tracked_state == 5) { f.prog = 0; f.trk_gnd = true; f.vel = 8; }
-    if (std::strcmp(s_logo_code, f.al_code) != 0) load_logo(f.al_code, f.ac_class);
+    if (std::strcmp(s_logo_code, logo_key(&f)) != 0) load_logo(logo_key(&f));
     fw_screen_tracked(s, &s_flight_settings, &f, page, (int64_t)std::time(nullptr), shown_logo());
     if (!(s_tracked_reported & (1u << s_tracked_state))) {
         static const char *const names[TrackedStates] = {"departed", "over", "metrics", "distance", "landed", "on_ground"};
@@ -334,7 +362,7 @@ void rotation_refresh(const FwSurface *s){
     FwShow show = fw_rotation_tick(&s_rotation, (uint32_t)(esp_timer_get_time() / 1000), &f, &more, &redraw);
     if (!redraw) { card_scroll(s); return; }
     if (show == FW_SHOW_FLIGHT && f) {
-        if (std::strcmp(s_logo_code, f->al_code) != 0) load_logo(f->al_code, f->ac_class);
+        if (std::strcmp(s_logo_code, logo_key(f)) != 0) load_logo(logo_key(f));
         fw_screen_flight(s, &s_flight_settings, f, shown_logo());
         fw_screen_frame(s, &frame);
         card_drawn();
@@ -403,6 +431,12 @@ void live_settings(){
     s_live_settings.anchor_count = d->anchor_count;
     s_live_settings.alias = fw_aliases_lookup;          /* owned feature: airport aliases */
     s_live_settings.progress = d->progress_bar;         /* owned: the route's progress along the bottom */
+    s_live_settings.flight_number = d->flight_number;   /* 4.2: the flight number, field formats, slots */
+    s_live_settings.alt_format = d->alt_format;
+    s_live_settings.vel_format = d->vel_format;
+    s_live_settings.vr_format = d->vr_format;
+    s_live_settings.trk_format = d->trk_format;
+    std::memcpy(s_live_settings.slots, d->slots, sizeof s_live_settings.slots);
     s_live_frame.border = d->border;
     s_live_frame.border_percent = d->border_percent;
     s_live_frame.indicator = false;
@@ -429,10 +463,100 @@ void live_settings(){
     s_live_settings_ready = true;
 }
 
+/* ---------------------------------------------------------------- weather (4.2)
+ * WEATHER.md: with the CLOCK loading template and a weather record no older
+ * than 3 h, the weather replaces the clock; redrawn when its frame changes
+ * (every 200 ms at most: the time, the age, the technical pages). The icon is
+ * the vendor's PNG when the wall's filesystem has it (decoded into the logo
+ * slot, which no flight needs meanwhile), else the owned drawing. */
+FwWeather s_wx;
+uint32_t s_wx_serial = UINT32_MAX;
+FwWxFrame s_wx_frame;              /* built each refresh */
+uint32_t s_wx_rows[FW_WX_ROWS];    /* what each row last drew */
+uint8_t s_wx_layout, s_wx_nrow;
+char s_wx_icon[24];
+bool s_wx_on;                      /* the weather is what the panel shows */
+bool s_wx_icon_retry;              /* the PNG could not be decoded yet (the block was busy) */
+uint32_t s_wx_at, s_wx_t0, s_wx_raw_hash;
+
+uint32_t fnv(const void *p, size_t n, uint32_t h){
+    const uint8_t *b = static_cast<const uint8_t *>(p);
+    while (n--) { h ^= *b++; h *= 0x01000193u; }
+    return h;
+}
+
+/* The vendor's icon at (4,6), from /images/weather/32/<name>.png; false when the
+ * filesystem has none or the decoder is busy. */
+bool weather_png(const FwSurface *s, const char *name){
+    char path[64];
+    std::snprintf(path, sizeof path, "/images/weather/32/%s.png", name);
+    if (!(s_assets_mounted = fw_assets_mount_partition())) return false;
+    if (!fw_assets_exists(path)) return false;
+    int n = fw_assets_read_file(path, s_logo_file, sizeof s_logo_file);
+    if (n <= 0) return false;
+    void *decoder = take_decoder();
+    if (!decoder) { s_wx_icon_retry = true; return false; }
+    s_ahead_ready = false;                         /* the logo slots are about to change */
+    s_shown_logo = &s_logo_a;
+    s_logo_ok = false;
+    s_logo_code[0] = 0;                            /* the next flight decodes its logo again */
+    int rc = fw_logo_decode_box(decoder, s_logo_file, (size_t)n, 32, 32, &s_logo_a);
+    fw_big_give();
+    if (rc != FW_LOGO_OK) return false;
+    fw_logo_draw_box(s, 4, 6, &s_logo_a);
+    return true;
+}
+
+/* Draws the weather when it should show; false for the clock (or the text). */
+bool weather_screen(const FwSurface *s, bool enter){
+    const FwFeedDisplay *d = &s_live_display;
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    int64_t now = (int64_t)std::time(nullptr);
+    if (!d->weather_enabled) return false;
+    uint32_t serial = fw_weather_store_copy(&s_wx);
+    if (serial != s_wx_serial) s_wx_serial = serial;
+    if (!fw_weather_valid(&s_wx) || fw_weather_age(&s_wx, now) > FW_WX_STALE_S) return false;
+    if (s_wx_on && !enter && !s_wx_icon_retry && now_ms - s_wx_at < 200) return true;
+    s_wx_at = now_ms;
+    uint32_t h = fnv(s_wx.raw, std::strlen(s_wx.raw), fnv(&s_wx.obs, sizeof s_wx.obs, 0x811c9dc5u));
+    if (h != s_wx_raw_hash) { s_wx_raw_hash = h; s_wx_t0 = now_ms; }   /* a new METAR: technical page 1 */
+    FwWeatherSettings ws;
+    std::memset(&ws, 0, sizeof ws);
+    ws.layout = d->weather_layout;
+    ws.temp_unit = d->temp_unit;
+    ws.wind_unit = d->wind_unit;
+    ws.vis_unit = d->vis_unit;
+    ws.ceil_unit = d->ceil_unit;
+    ws.is_24h = s_clock_config.is_24h;
+    ws.show_seconds = s_clock_config.show_seconds;
+    ws.zone = s_clock_config.zone;
+    fw_weather_frame(&s_wx, &ws, now, now_ms - s_wx_t0, &s_wx_frame);
+    bool full = enter || !s_wx_on || s_wx_icon_retry || s_wx_frame.layout != s_wx_layout ||
+                s_wx_frame.nrow != s_wx_nrow || std::strcmp(s_wx_frame.icon, s_wx_icon);
+    if (full) {
+        s_wx_icon_retry = false;
+        fw_clear(s);
+        bool png = s_wx_frame.icon[0] && weather_png(s, s_wx_frame.icon);
+        if (!png && s_wx_frame.icon[0]) fw_weather_icon_draw(s, 4, 6, s_wx_frame.icon);
+        std::memset(s_wx_rows, 0, sizeof s_wx_rows);
+        s_wx_layout = s_wx_frame.layout;
+        s_wx_nrow = s_wx_frame.nrow;
+        std::snprintf(s_wx_icon, sizeof s_wx_icon, "%s", s_wx_frame.icon);
+    }
+    fw_weather_draw_rows(s, &s_wx_frame, s_wx_rows);   /* only the rows that changed */
+    if (!s_wx_on) fw_mem_report("weather_shown", nullptr);
+    s_wx_on = true;
+    return true;
+}
+
 /* No flights: the stored loading_template (TEXT "No flights...", CLOCK,
- * BLANK, ELLIPSIS). */
+ * BLANK, ELLIPSIS); with CLOCK, the weather instead when there is some. */
 void live_empty(const FwSurface *s, bool enter){
     const char *t = s_live_display.loading;
+    bool was_weather = s_wx_on;
+    if (!std::strcmp(t, "CLOCK") && weather_screen(s, enter)) return;
+    s_wx_on = false;
+    if (was_weather) enter = true;                 /* back to the clock: draw it afresh */
     if (!std::strcmp(t, "CLOCK") && clock_set()) {
         if (enter) clock_enter(s); else clock_refresh(s);
     } else if (enter) {
@@ -443,7 +567,7 @@ void live_empty(const FwSurface *s, bool enter){
 
 void live_tracked_draw(const FwSurface *s){
     const FwFlight *f = &s_live.flights[s_trk_flight];
-    if (std::strcmp(s_logo_code, f->al_code) != 0) load_logo(f->al_code, f->ac_class);
+    if (std::strcmp(s_logo_code, logo_key(f)) != 0) load_logo(logo_key(f));
     fw_screen_tracked(s, &s_live_settings, f, s_trk_pages[s_trk_page_i], (int64_t)std::time(nullptr),
                       shown_logo());
     fw_screen_frame(s, &s_live_frame);
@@ -483,7 +607,7 @@ void live_rotation_tick(const FwSurface *s){
     s_live_redraw = false;
     s_live_frame.indicator = s_live_rotation.indicator;
     if (show == FW_SHOW_FLIGHT && f) {
-        if (std::strcmp(s_logo_code, f->al_code) != 0) load_logo(f->al_code, f->ac_class);
+        if (std::strcmp(s_logo_code, logo_key(f)) != 0) load_logo(logo_key(f));
         fw_screen_flight(s, &s_live_settings, f, shown_logo());
         fw_screen_frame(s, &s_live_frame);
         card_drawn();
@@ -644,7 +768,7 @@ void sync_draw(const FwSurface *s, uint32_t now){
         /* live: stock's tracked pages, then the message; else page 0 and the message, 5 s each */
         int page = s_sync_pages[s_sync_sub % (s_sync_page_count ? s_sync_page_count : 1)];
         const char *code = s_sync_has_live && s_sync_live.al_code[0] ? s_sync_live.al_code : sync_logo_code(&s_sv.active);
-        if (std::strcmp(s_logo_code, code) != 0) load_logo(code, nullptr);
+        if (std::strcmp(s_logo_code, logo_key(code, nullptr, nullptr)) != 0) load_logo(logo_key(code, nullptr, nullptr));
         FwSyncLive lv = {s_sync_live.dep, s_sync_live.arr, nullptr, nullptr, s_sync_live.prog};
         fw_screen_sync_active(s, &s_live_settings, &s_sv.active, s_sync_has_live ? &s_sync_live : nullptr,
                               s_sync_has_live ? &lv : nullptr, s_sv.message, page, s_sync_sub, t, shown_logo());

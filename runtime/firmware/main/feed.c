@@ -39,6 +39,9 @@
 #include <strings.h>
 #include <time.h>
 
+#include "weather.h"
+#include "vendor_images.h"
+
 #define HOST "api.theflightwall.com"
 #define POLL_MS 10000
 #define IO_MS 10000
@@ -51,6 +54,7 @@ static char s_key[80];
 static uint32_t s_store_serial;
 static TaskHandle_t s_task;
 static FwFeedFrame s_frame, s_parse;
+static FwWeather s_parse_wx;            /* 4.2: the response's weather, handed to weather.h */
 static volatile uint32_t s_serial;
 static char *s_request;                 /* headers + body, built once */
 static size_t s_request_len;
@@ -280,12 +284,13 @@ static int poll_once(int *status, size_t *bytes){
     if (rc != 1) { stage = 3; goto done; }
     if (r.status != 200) { stage = 4; goto done; }
     if (!r.msgpack) { stage = 5; goto done; }                /* JSON answers are not read yet */
-    if (fw_feed_parse(s_body, r.body_len, &s_parse) != FW_FEED_OK) { stage = 6; goto done; }
+    if (fw_feed_parse(s_body, r.body_len, &s_parse, &s_parse_wx) != FW_FEED_OK) { stage = 6; goto done; }
     xSemaphoreTake(s_lock, portMAX_DELAY);
     memcpy(&s_frame, &s_parse, sizeof s_frame);
     apply_progress(&s_frame);
     ++s_serial;
     xSemaphoreGive(s_lock);
+    fw_weather_store_vendor(&s_parse_wx, s_parse.count != 0);   /* 4.2: the server's weather */
     s_state = FW_FEED_LIVE;
     fw_app_settings_hash(s_parse.config_hash);          /* stock: a new hash means the app changed something */
     /* Stats: the listed flights (at most five; the rest only as a count) and
@@ -397,6 +402,18 @@ static void community_tick(void){
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait));      /* a settings change wakes it early */
 }
 
+/* What the weather fetcher needs (weather.h), from the settings in force. */
+static void weather_want(FwWeatherWant *w){
+    memset(w, 0, sizeof *w);
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    w->enabled = s_display.weather_enabled && s_display.has_display_config;
+    w->community = s_source == FW_SOURCE_COMMUNITY;
+    snprintf(w->station, sizeof w->station, "%s", s_display.weather_station);
+    w->has_area = s_area_count > 0;
+    if (w->has_area) { w->lat = s_areas[0].lat; w->lon = s_areas[0].lon; }
+    xSemaphoreGive(s_lock);
+}
+
 static void feed_task(void *arg){
     (void)arg;
     for (;;) {
@@ -413,6 +430,16 @@ static void feed_task(void *arg){
                                  s_source == FW_SOURCE_VENDOR && s_state == FW_FEED_LIVE,
                                  fw_wifi_link_connections())) continue;
         if (s_state == FW_FEED_NO_CONFIG || s_state == FW_FEED_OFF) { ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(POLL_MS)); continue; }
+        {   /* the weather for when the sky is quiet: at most one request, when due */
+            FwWeatherWant want;
+            bool images;
+            weather_want(&want);
+            fw_weather_step(&want);
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            images = !s_display.has_display_config || s_display.vendor_images;
+            xSemaphoreGive(s_lock);
+            fw_vendor_images_step(images);           /* the vendor's images: a check, or a piece of a download */
+        }
         if (s_source == FW_SOURCE_COMMUNITY) { community_tick(); continue; }
         t0 = now_ms();
         stage = poll_once(&status, &bytes);
@@ -449,6 +476,7 @@ void fw_feed_start(void){
         fw_mem_report("feed_no_key", NULL);           /* vendor source: FW_FEED_OFF, demo screens */
     }
     fw_app_settings_init();
+    fw_weather_store_init();
     s_store_serial = fw_store_serial() - 1;              /* configure on the first pass */
     configure();
     /* 8 KiB (5.5 KiB used at most on the board): the community source runs TLS (about 4 KiB, measured by the

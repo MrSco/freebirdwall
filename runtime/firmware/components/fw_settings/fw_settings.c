@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cJSON.h"
+#include "fw_flight.h"
 
 typedef struct {
     FwSettingsError *err;
@@ -107,8 +108,18 @@ static bool v_hhmm(Ctx *c, const char *f, const cJSON *v){
     return ok || fail(c, f, "must be HH:MM");
 }
 
+/* 4.2: field formats (LAYOUTS.md) and the weather's units (WEATHER.md) */
+ENUM(v_alt_fmt, "standard", "short", "flight_level")
+ENUM(v_fmt, "standard", "short")
+ENUM(v_temp_unit, "celsius", "fahrenheit")
+ENUM(v_wind_unit, "knots", "mph", "kmh", "mps")
+ENUM(v_vis_unit, "auto", "miles", "kilometers")
+ENUM(v_ceil_unit, "feet", "meters")
 static const Rule METRIC[] = {{"alt_b_unit", v_alt}, {"vel_unit", v_vel}, {"vr_unit", v_vr}, {"trk_unit", v_trk},
-                              {"dist_unit", v_dist}, {NULL, NULL}};
+                              {"dist_unit", v_dist}, {"alt_b_format", v_alt_fmt}, {"vel_format", v_fmt},
+                              {"vr_format", v_fmt}, {"trk_format", v_fmt}, {"dist_format", v_fmt},
+                              {"temp_unit", v_temp_unit}, {"wind_unit", v_wind_unit}, {"vis_unit", v_vis_unit},
+                              {"ceil_unit", v_ceil_unit}, {NULL, NULL}};
 static bool v_metric(Ctx *c, const char *f, const cJSON *v){ return object(c, f, v, METRIC); }
 
 static const Rule ZONE[] = {{"standard_utc_offset_minutes", v_offset}, {"dst_rule", v_dst}, {NULL, NULL}};
@@ -145,13 +156,62 @@ static bool v_anchors(Ctx *c, const char *f, const cJSON *v){
     return true;
 }
 
+/* 4.2 */
+ENUM(v_identity, "callsign", "iata_flight_number")
+ENUM(v_wx_layout, "summary", "simple", "technical")
+static bool v_seconds(Ctx *c, const char *f, const cJSON *v){
+    double d = cJSON_IsNumber(v) ? v->valuedouble : -1;
+    return d == 2 || d == 3 || d == 5 || d == 10 || d == 20 || d == 30 || fail(c, f, "must be 2, 3, 5, 10, 20 or 30");
+}
+static const Rule WEATHER[] = {{"enabled", v_bool}, {"layout", v_wx_layout}, {NULL, NULL}};
+static bool v_weather(Ctx *c, const char *f, const cJSON *v){ return object(c, f, v, WEATHER); }
+
+/* layout_overrides: {"area": {"<LAYOUT>": {"slots": {"<slot>": "<field>"}}}}, slots of
+ * that layout (fw_flight_slots) and the twelve fields only. */
+static bool v_slots_of(Ctx *c, const char *f, const cJSON *v, const char *layout){
+    const cJSON *it;
+    int count, i;
+    const FwSlot *table = fw_flight_slots(true, layout, &count);
+    char path[256];
+    if (!cJSON_IsObject(v)) return fail(c, f, "must be an object");
+    cJSON_ArrayForEach(it, v) {
+        snprintf(path, sizeof path, "%.120s.%.40s", f, it->string);
+        for (i = 0; i < count && strcmp(table[i].name, it->string); ++i) {}
+        if (i == count) return fail(c, path, "not a slot of this layout");
+        if (!cJSON_IsString(it) || fw_flight_field_parse(it->valuestring) < 0) return fail(c, path, "not one of the fields");
+    }
+    return true;
+}
+static bool v_overrides(Ctx *c, const char *f, const cJSON *v){
+    const cJSON *area, *it;
+    char path[256];
+    if (!cJSON_IsObject(v)) return fail(c, f, "must be an object");
+    cJSON_ArrayForEach(it, v) if (strcmp(it->string, "area")) return fail(c, f, "only area");
+    area = cJSON_GetObjectItemCaseSensitive(v, "area");
+    if (!area) return true;
+    if (!cJSON_IsObject(area)) return fail(c, f, "area must be an object");
+    cJSON_ArrayForEach(it, area) {
+        const cJSON *k;
+        int count;
+        snprintf(path, sizeof path, "%.120s.area.%.40s", f, it->string);
+        if (!fw_flight_slots(true, it->string, &count)) return fail(c, path, "not a layout with slots");
+        if (!cJSON_IsObject(it)) return fail(c, path, "must be an object");
+        cJSON_ArrayForEach(k, it) if (strcmp(k->string, "slots")) return fail(c, path, "only slots");
+        k = cJSON_GetObjectItemCaseSensitive(it, "slots");
+        snprintf(path, sizeof path, "%.120s.area.%.40s.slots", f, it->string);
+        if (k && !v_slots_of(c, path, k, it->string)) return false;
+    }
+    return true;
+}
+
 static const Rule DISPLAY[] = {
     {"layout_template", v_layout}, {"loading_template", v_loading}, {"title_text", v_title},
     {"flight_display_speed", v_speed}, {"max_flights_behavior", v_maxf}, {"metric_display", v_metric},
     {"border_enable", v_bool}, {"border_brightness_percent", v_percent}, {"brightness_percent", v_brightness},
     {"anchor_airports", v_anchors}, {"time_zone", v_zone}, {"clock_is_24hr", v_bool}, {"clock_show_seconds", v_bool},
     {"clock", v_clock}, {"date_format", v_datef}, {"locale", v_locale}, {"display_enabled", v_bool},
-    {"sleep_time", v_sleep}, {NULL, NULL}};
+    {"sleep_time", v_sleep}, {"flight_display_seconds", v_seconds}, {"flight_identity", v_identity},
+    {"weather", v_weather}, {"layout_overrides", v_overrides}, {NULL, NULL}};
 
 /* ------------------------------------------------------------ request_config */
 
@@ -221,9 +281,23 @@ static bool v_tracked(Ctx *c, const char *f, const cJSON *v){
 ENUM(v_source, "vendor", "community")
 ENUM(v_tracking, "community", "aeroapi")
 ENUM(v_scroll, "slow", "normal", "fast")
+static bool v_station(Ctx *c, const char *f, const cJSON *v){
+    const char *s = cJSON_IsString(v) ? v->valuestring : NULL;
+    size_t n = s ? strlen(s) : 9, i;
+    if (n != 0 && n != 3 && n != 4) return fail(c, f, "a 3 or 4 letter station, or empty for the nearest");
+    for (i = 0; i < n; ++i)
+        if (!((s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= '0' && s[i] <= '9'))) return fail(c, f, "capital letters and digits only");
+    return true;
+}
+static bool v_landed(Ctx *c, const char *f, const cJSON *v){
+    double d = cJSON_IsNumber(v) ? v->valuedouble : -1;
+    return d == 5 || d == 15 || d == 30 || fail(c, f, "must be 5, 15 or 30 minutes");
+}
+ENUM(v_assets, "auto", "off")
 static const Rule OWNED[] = {{"flight_source", v_source}, {"follow_app", v_bool}, {"tracking_source", v_tracking},
                              {"scroll_speed", v_scroll}, {"progress_bar", v_bool}, {"heartbeat_enabled", v_bool},
-                             {NULL, NULL}};
+                             {"weather_station", v_station}, {"tracked_landed_minutes", v_landed},
+                             {"vendor_images", v_assets}, {NULL, NULL}};
 
 static const Rule REQUEST[] = {{"radius_requests", v_zones}, {"data_filters", v_filters},
                                {"tracked_flights", v_tracked}, {NULL, NULL}};

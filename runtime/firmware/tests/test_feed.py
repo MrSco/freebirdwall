@@ -31,13 +31,14 @@ CJSON = Path(os.environ.get('IDF_PATH') or Path.home() / 'esp' / 'esp-idf-v4.4.7
 SOURCES = [HERE / 'feed_dump.c', FW / 'components/fw_feed/fw_feed_msgpack.c', FW / 'components/fw_feed/fw_feed_config.c',
            FW / 'components/fw_feed/fw_feed_http.c',
            FW / 'components/fw_flight/fw_flight.c', FW / 'components/fw_flight/fw_rotation.c',
-           FW / 'components/fw_sync/fw_sync.c', FW / 'components/fw_screens/fw_screens.c', FW / 'components/fw_screens/fw_brand.c',
+           FW / 'components/fw_sync/fw_sync.c', FW / 'components/fw_weather/fw_weather.c',
+           FW / 'components/fw_clock/fw_clock.c', FW / 'components/fw_clock/clock_tables.c', FW / 'components/fw_screens/fw_screens.c', FW / 'components/fw_screens/fw_brand.c',
            FW / 'components/fw_logo/fw_logo.c', FW / 'components/fw_text/fw_text.c',
            FW / 'components/fw_text/font5x7.c', FW / 'components/fw_text/vendor_charmap.c',
            FW / 'components/pngdec/pngdec_unit.c', FW / 'components/qrcode/fw_qr.c',
            FW.parent / 'build/deps/qrcode/src/qrcode.c', CJSON / 'cJSON.c'] + [
     PNGDEC / n for n in ('adler32.c', 'crc32.c', 'infback.c', 'inffast.c', 'inflate.c', 'inftrees.c', 'zutil.c')]
-INCLUDES = [FW / 'components' / c / 'include' for c in ('fw_feed', 'fw_flight', 'fw_sync', 'fw_screens', 'fw_logo',
+INCLUDES = [FW / 'components' / c / 'include' for c in ('fw_feed', 'fw_flight', 'fw_sync', 'fw_weather', 'fw_clock', 'fw_screens', 'fw_logo',
                                                         'fw_text', 'qrcode')] + [
     PNGDEC, FW.parent / 'build/deps/qrcode/src', CJSON]
 
@@ -133,13 +134,51 @@ def test_tracked(exe, tmp):
     check(r['count'] == 2 and not r['tracked'], 'tracked: f after tf')
 
 
+def test_42(exe, tmp):
+    """Vendor 4.2: fn, al_short, ac_icao, the longer al_name, the weather record."""
+    rec = dict(FULL, fn='AA1234', al_short='American', ac_icao='B738', al_name='Air New Zealand Limited Pacific Wings')
+    r = run(exe, tmp, 'parse', mp({'f': [rec]}))
+    f = r['flights'][0]
+    check(r['rc'] == 0 and f['fn'] == 'AA1234' and f['al_short'] == 'American' and f['ac_type'] == 'B738', '4.2: new keys')
+    r = run(exe, tmp, 'parse', mp({'f': [{'cs': 'X', 'ac_icao': 'A20N'}, {'ac_type': 'B738', 'ac_icao': 'B38M'}]}))
+    check([g['ac_type'] for g in r['flights']] == ['A20N', 'B738'], '4.2: ac_icao fills an empty ac_type only')
+    check(f['al_name'] == 'Air New Zealand Limited Pacific Win' and f['al_name_cut'] and not f['al_short_cut'],
+          '4.2: al_name 35 bytes, cut flag %r' % f['al_name'])
+    # a wrongly typed new field is skipped, not fatal
+    r = run(exe, tmp, 'parse', mp({'f': [dict(FULL, fn=12, al_short=[1, 2], ac_icao=None)]}))
+    f = r['flights'][0]
+    check(r['rc'] == 0 and f['fn'] == '' and f['al_short'] == '' and f['cs'] == 'AAL1234', '4.2: soft new fields')
+    check(run(exe, tmp, 'parse', mp({'f': [dict(FULL, fn='-12')]}))['flights'][0]['fn'] == '', '4.2: fn starts alnum')
+    # a cut al_short drops a broken UTF-8 tail
+    f = run(exe, tmp, 'parse', mp({'f': [{'al_short': 'a' * 30 + 'é'}]}))['flights'][0]
+    check(f['al_short'] == 'a' * 30 and f['al_short_cut'], '4.2: utf-8 tail %r' % f['al_short'])
+    wx = {'stn': 'KBOS', 'name': 'Boston Logan', 'raw': 'KBOS 172154Z 35023G36KT 10SM', 'cat': 'IFR', 'cond': 'rain',
+          'obs': 1794955000, 'wdir': 350, 'wspd': 23.4, 'wgst': 36, 'vis_m': 16093.4, 'ceil_ft': 7000, 'temp_c': 11,
+          'utc_off': -300, 'utc_at': 1795000000, 'utc_next': -240, 'auto': True, 'night': False, 'wvar': False,
+          'vis_plus': True, 'extra': {'nested': [1, 2]}}
+    r = run(exe, tmp, 'parse', mp({'f': [], 'weather': wx, 'hl': {'id': 'x', 'txt': 'hello'}}))
+    w = r['weather']
+    check(r['rc'] == 0 and w['valid'] and w['stn'] == 'KBOS' and w['name'] == 'Boston Logan' and w['cat'] == 3 and
+          w['cond'] == 6, '4.2 weather: strings %r' % w)
+    check((w['obs'], w['wdir'], w['wspd'], w['wgst'], w['vis_m'], w['ceil_ft'], w['temp_c'], w['utc_off'], w['utc_at'],
+           w['utc_next']) == (1794955000, 350, 23, 36, 16093, 7000, 11, -300, 1795000000, -240), '4.2 weather: numbers %r' % w)
+    check(w['auto'] and w['vis_plus'] and not w['night'], '4.2 weather: bools')
+    # wrong kinds: ignored, the record and the response still good
+    r = run(exe, tmp, 'parse', mp({'weather': {'stn': 'KBOS', 'obs': 5, 'temp_c': 'warm', 'cat': 3, 'wdir': 12.5}}))
+    w = r['weather']
+    check(r['rc'] == 0 and w['valid'] and w['temp_c'] == -999 and w['cat'] == 0 and w['wdir'] == -1, '4.2 weather: kinds')
+    r = run(exe, tmp, 'parse', mp({'weather': 'none', 'f': [{'cs': 'X'}]}))
+    check(r['rc'] == 0 and not r['weather']['valid'] and r['count'] == 1, '4.2 weather: not a map')
+
+
 def test_limits(exe, tmp):
     r = run(exe, tmp, 'parse', mp({'f': [{'cs': 'F%d' % i} for i in range(7)], 'ov': 2}))
     check(r['rc'] == 0 and r['count'] == 5 and r['flights'][4]['cs'] == 'F4', 'limits: five records')
     long = {'cs': 'ABCDEFGHIJKLMNOP', 'icao': '1234567890', 'orig': 'x' * 40, 'al_name': 'é' * 20, 'ac_class': 'c' * 30}
     f = run(exe, tmp, 'parse', mp({'f': [long]}))['flights'][0]
     check(f['cs'] == 'ABCDEFGHIJK' and f['icao'] == '1234567' and f['orig'] == 'x' * 31, 'limits: bytewise cuts')
-    check(f['al_name'] == text(('é' * 20).encode()[:23]), 'limits: UTF-8 cut mid-character (stock)')
+    check(f['al_name'] == text(('é' * 17).encode()) and f['al_name_cut'],
+          'limits: al_name cut at 35 bytes, broken UTF-8 tail removed (4.2, FUN_42008770)')
     check(f['ac_class'] == 'c' * 15, 'limits: ac_class 15 as stock')
     for reg, want in ((' n123ab ', 'N123AB'), ('N12 3', ''), ('A' * 15, 'A' * 15), ('A' * 16, ''), ('G-EZAB', 'G-EZAB'),
                       ('N1_2', ''), ('', '')):
@@ -289,6 +328,34 @@ def test_display(exe, tmp):
           e['locale'] == 'en' and e['title'] == 0 and e['enabled'] and not e['has_sleep'], 'display: defaults %r' % e)
 
 
+def test_display_42(exe, tmp):
+    """Vendor 4.2 display settings: hold time, flight number, formats, slots, weather."""
+    def disp(dc, owned=None):
+        doc = {'display_config': dc}
+        if owned is not None:
+            doc['owned_config'] = owned
+        return run(exe, tmp, 'display', json.dumps(doc))
+    for sec, want in ((2, 2000), (30, 30000), (10, 10000), (7, 3000), ('10', 3000), (30.5, 3000)):
+        check(disp({'flight_display_seconds': sec})['dwell'] == want, 'display 4.2: seconds %r' % (sec,))
+    check(disp({'flight_display_speed': 'slow', 'flight_display_seconds': 20})['dwell'] == 20000, 'display 4.2: seconds win')
+    d = disp({'flight_identity': 'iata_flight_number',
+              'metric_display': {'alt_b_format': 'flight_level', 'vel_format': 'short', 'vr_format': 'short',
+                                 'trk_format': 'nope', 'temp_unit': 'fahrenheit', 'wind_unit': 'kmh', 'vis_unit': 'miles',
+                                 'ceil_unit': 'meters'},
+              'weather': {'enabled': True, 'layout': 'technical'}}, {'weather_station': 'KBOS'})
+    check(d['flight_number'] and d['formats'] == [2, 1, 1, 0], 'display 4.2: identity, formats %r' % d['formats'])
+    check(d['weather'] == [True, 2, 1, 2, 1, 1] and d['station'] == 'KBOS', 'display 4.2: weather %r' % d['weather'])
+    d = disp({'weather': {'enabled': 'yes'}})
+    check(d['weather'] == [False, 0, 0, 0, 0, 0] and not d['flight_number'], 'display 4.2: defaults %r' % d['weather'])
+    over = {'area': {'TECHNICAL': {'slots': {'footer1b': 'registration', 'heading3': 'origin', 'nope': 'airline',
+                                             'footer2a': 'warp', 'footer2b': 7}},
+                     'DEFAULT': {'slots': {'heading1': 'callsign'}}}}
+    d = disp({'layout_template': 'TECHNICAL', 'layout_overrides': over})
+    check(d['slots'] == [0, 0, 6, 0, 4, 0, 0, 0, 0], 'display 4.2: TECHNICAL slots %r' % d['slots'])
+    d = disp({'layout_template': 'DEFAULT', 'layout_overrides': over})
+    check(d['slots'] == [3, 0, 0, 0, 0, 0, 0, 0, 0], 'display 4.2: only the current layout %r' % d['slots'])
+
+
 def test_zones(exe, tmp):
     UNSET = -32768
     def disp(dc):
@@ -381,7 +448,7 @@ def test_http(exe, tmp):
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         exe = build(tmp)
-        for t in (test_full, test_tracked, test_limits, test_types, test_body, test_body_sync, test_display, test_zones, test_source, test_http):
+        for t in (test_full, test_tracked, test_42, test_limits, test_types, test_body, test_body_sync, test_display, test_display_42, test_zones, test_source, test_http):
             t(exe, tmp)
     for f in failures:
         print('FAIL', f)

@@ -249,18 +249,55 @@ var ALT=[['feet','Feet'],['meters','Metres'],['kilometers','Kilometres'],['nauti
  VEL=[['mph','mph'],['knots','Knots'],['kmh','km/h'],['mps','m/s'],['mach','Mach']],
  VR=[['fpm','ft/min'],['fps','ft/s'],['mph','mph'],['kmh','km/h'],['mps','m/s']],
  DIST=[['miles','Miles'],['nautical_miles','Nautical miles'],['kilometers','Kilometres'],['meters','Metres'],['feet','Feet']];
+/* 4.2: how long each flight stays (flight_display_seconds; the older speed sets the default) */
+var HOLD=[[2,'2 seconds'],[3,'3 seconds'],[5,'5 seconds'],[10,'10 seconds'],[20,'20 seconds'],[30,'30 seconds']];
+function holdDefault(){var v=get(st.work,'display_config.flight_display_speed');return v==='fast'?2:v==='slow'?5:3}
+/* 4.2: "When the sky is quiet": the loading template, or the weather (CLOCK + weather.enabled) */
+function quietNow(){var P='display_config.',l=val(P+'loading_template','TEXT');return l==='CLOCK'&&get(st.work,P+'weather.enabled')?'WEATHER':l}
+function quietSeg(){var v=quietNow(),opts=[['TEXT','Text'],['CLOCK','Clock'],['WEATHER','Weather'],['ELLIPSIS','Dots'],['BLANK','Blank']];
+ return '<div class="field" data-field="display_config.loading_template"><div class="label">When the sky is quiet<small>No flights nearby</small></div><div class="seg" role="group" aria-label="When the sky is quiet">'+
+  opts.map(function(o){return '<button type="button" data-quiet="'+o[0]+'" aria-pressed="'+(v===o[0])+'">'+o[1]+'</button>'}).join('')+'</div></div>'}
+var TEMP=[['celsius','°C'],['fahrenheit','°F']],WIND=[['knots','Knots'],['mph','mph'],['kmh','km/h'],['mps','m/s']],
+ VIS=[['auto','Miles in the US, else km'],['miles','Miles'],['kilometers','Kilometres']],CEIL=[['feet','Feet'],['meters','Metres']];
+function weatherCard(){var P='display_config.',w=st.wx||{},src=w.source==='feed'?'from the FlightWall service':w.source==='aviationweather'?'from aviationweather.gov':'';
+ return card('Weather','Live METAR weather from the nearest airport, or the station you choose, while no flights are nearby. Not for navigation or flight planning.',
+  seg(P+'weather.layout',[['summary','Summary'],['simple','Simple'],['technical','Raw METAR']],'summary','Layout','Summary: wind, visibility, ceiling, temperature · Simple: a big temperature · Raw METAR: for pilots')+
+  text('owned_config.weather_station','Station','ICAO code, e.g. KBOS · empty for the nearest to your first area','maxlength="4" placeholder="Nearest" autocapitalize="characters" data-upper="1"')+
+  '<div class="two-col">'+sel(P+'metric_display.temp_unit',TEMP,'celsius','Temperature')+sel(P+'metric_display.wind_unit',WIND,'knots','Wind')+
+  sel(P+'metric_display.vis_unit',VIS,'auto','Visibility')+sel(P+'metric_display.ceil_unit',CEIL,'feet','Ceiling')+'</div>'+
+  '<p class="note">'+(w.station?'Now: '+esc(w.station)+(src?' · '+src:''):get(st.doc,'owned_config.flight_source')==='community'?
+   'The wall reads it from aviationweather.gov (NOAA) every 10 minutes.':'The FlightWall service sends it; if it does not, the wall reads aviationweather.gov itself.')+
+  (w.failures?' · '+w.failures+' failed of '+w.requests+' requests':'')+'</p>')}
+/* 4.2 "Customize slots": what each line of the card shows (layout_overrides) */
+var FIELDS=[['airline','Airline'],['callsign','Callsign'],['registration','Registration'],['aircraft_type','Aircraft type'],['origin','Origin'],
+ ['destination','Destination'],['route','Route · BOS-FLL'],['altitude','Altitude'],['speed','Speed'],['track','Heading'],['vertical_rate','Climb rate'],['empty','Nothing']];
+var SLOTS={DEFAULT:[['heading1','Top line','airline'],['heading2','Second line','route'],['heading3','Third line','aircraft_type'],['footer1','Bottom, first','origin'],['footer2','Bottom, second','destination']],
+ NO_LOGO:[['heading1','Top line','airline'],['heading2a','Second line, left','route'],['heading2b','Second line, right','aircraft_type'],['heading3','Third line','origin'],['footer1','Bottom, first','destination'],['footer2a','Last line, left','altitude'],['footer2b','Last line, right','speed']],
+ TECHNICAL:[['heading1','Top line','airline'],['heading2','Second line','route'],['heading3','Third line','aircraft_type'],['footer1a','Bottom left','altitude'],['footer1b','Bottom right','speed'],['footer2a','Last line, left','track'],['footer2b','Last line, right','vertical_rate']]};
+function fieldName(f){for(var i=0;i<FIELDS.length;i++)if(FIELDS[i][0]===f)return FIELDS[i][1];return f}
+function slotsCard(){var lay=val('display_config.layout_template','DEFAULT'),list=SLOTS[lay]||SLOTS.DEFAULT,
+  base='display_config.layout_overrides.area.'+lay+'.slots.',any=list.some(function(x){var v=get(st.work,base+x[0]);return v&&v!==x[2]});
+ return card('Customize lines','What each line of the '+(lay==='NO_LOGO'?'No logo':lay==='TECHNICAL'?'Technical':'Logo')+' card shows. A half line holds about ten letters; what does not fit scrolls.',
+  '<div class="two-col">'+list.map(function(x){var path=base+x[0],v=get(st.work,path)||'';
+   return '<div class="field" data-field="'+path+'"><label for="'+idOf(path)+'">'+x[1]+'</label><select id="'+idOf(path)+'" data-slot="'+path+'">'+
+    '<option value=""'+(v===''||v===x[2]?' selected':'')+'>Default · '+esc(fieldName(x[2]))+'</option>'+
+    FIELDS.filter(function(f){return f[0]!==x[2]}).map(function(f){return '<option value="'+f[0]+'"'+(v===f[0]?' selected':'')+'>'+esc(f[1])+'</option>'}).join('')+'</select></div>'}).join('')+'</div>'+
+  (any?'<div class="btns"><button type="button" class="btn small" id="slots-reset">Back to the default lines</button></div>':''))}
 function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_time');
  return pvCard()+'<div class="grid two">'+
+ '<div class="grid">'+
  card('Flight card','What each flight shows.',
   seg(P+'title_text',[['airline','Airline'],['callsign','Callsign'],['registration','Registration']],'airline','Title')+
+  seg(P+'flight_identity',[['callsign','Callsign · ANZ7'],['iata_flight_number','Flight number · NZ7']],'callsign','Callsigns show as','The flight number when the flight data has one (the FlightWall service sends it)')+
   seg(P+'layout_template',[['DEFAULT','Logo'],['NO_LOGO','No logo'],['TECHNICAL','Technical']],'DEFAULT','Layout','Technical shows altitude, speed and heading')+
-  seg(P+'flight_display_speed',[['slow','Slow'],['normal','Normal'],['fast','Fast']],'normal','Time on each flight')+
+  sel(P+'flight_display_seconds',HOLD,holdDefault(),'Time on each flight','Longer for areas with few flights')+
   seg(P+'max_flights_behavior',[['text','Count screen'],['indicator_led','Corner light'],['off','Nothing']],'text','More than five flights')+
-  seg(P+'loading_template',[['TEXT','Text'],['CLOCK','Clock'],['ELLIPSIS','Dots'],['BLANK','Blank']],'TEXT','No flights nearby')+
+  quietSeg()+
   sw('owned_config.progress_bar',false,'Progress bar','How far each flight is between its airports, along the bottom')+
   (get(st.work,'owned_config.progress_bar')?'<p class="note" style="margin-top:0">'+(get(st.work,'owned_config.flight_source')==='community'?
    'From the positions the wall already has. Flights with no known route show no bar.':
    'The FlightWall service sends no positions, so the wall looks each flight on screen up on adsb.fi, about once a minute. Flights adsb.fi cannot see show no bar.')+'</p>':''))+
+ slotsCard()+(quietNow()==='WEATHER'?weatherCard():'')+'</div>'+
  '<div class="grid">'+
  card('Brightness','',
   range(P+'brightness_percent',1,100,15,'Brightness','%')+
@@ -277,7 +314,11 @@ function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_ti
  card('Units','',
   '<div class="two-col">'+sel(P+'metric_display.alt_b_unit',ALT,'meters','Altitude')+sel(P+'metric_display.vel_unit',VEL,'kmh','Speed')+
   sel(P+'metric_display.vr_unit',VR,'kmh','Climb rate')+sel(P+'metric_display.dist_unit',DIST,'meters','Distance')+'</div>'+
-  seg(P+'metric_display.trk_unit',[['cardinal','Compass · NE'],['degrees','Degrees · 45°']],'degrees','Heading'))+
+  seg(P+'metric_display.trk_unit',[['cardinal','Compass · NE'],['degrees','Degrees · 45°']],'degrees','Heading')+
+  '<div class="two-col">'+sel(P+'metric_display.alt_b_format',[['standard','Alt:35kft'],['short','35kft'],['flight_level','FL350 (with feet)']],'standard','Altitude style')+
+  sel(P+'metric_display.vel_format',[['standard','Spd:518mph'],['short','518mph']],'standard','Speed style')+
+  sel(P+'metric_display.trk_format',[['standard','Trk:225deg'],['short','225°']],'standard','Heading style')+
+  sel(P+'metric_display.vr_format',[['standard','Vr:+1.2kfpm'],['short','↑1200']],'standard','Climb style')+'</div>')+
  '</div>'}
 function timeIn(path,label){return '<div class="field" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+'</label><input type="time" id="'+idOf(path)+'" data-bind="'+path+'" data-type="string" value="'+esc(val(path,''))+'"></div>'}
 
@@ -340,6 +381,8 @@ function viewFlights(){var Q='request_config.',zones=get(st.work,Q+'radius_reque
   tracked.map(function(t,i){var p=Q+'tracked_flights.'+i;
    return '<div class="item" data-field="'+p+'"><div class="head"><span>'+esc(t.flight_number)+'</span><button type="button" class="btn small danger" data-del-tracked="'+i+'">Remove</button></div>'+
    sw(p+'.auto_remove',true,'Stop after it lands')+sw(p+'.show_distance_travelled',false,'Show distance flown')+sw(p+'.show_metrics',false,'Show altitude and speed')+'</div>'}).join('')+
+  (tracked.length?seg('owned_config.tracked_landed_minutes',[[5,'5 min'],[15,'15 min'],[30,'30 min']],15,'After landing, stay on the wall for',
+   'Then a flight set to stop is dropped; the others are looked for again next time they fly')+'':'')+
   (tracked.length<8?'<div class="field"><label for="track-in">Track a flight<small>Airline code and number, e.g. DL1234</small></label><div class="add"><input type="text" id="track-in" maxlength="11" placeholder="DL1234" autocomplete="off" autocapitalize="characters"><button type="button" class="btn" id="track-add">Track</button></div></div>':''))+
  '</div></div>'}
 /* Tracked flights on community data: times estimated by the wall, or from the
@@ -515,6 +558,16 @@ function gamesWire(){var rot=$('#rot'),qr=$('#qr');if(!rot)return;
  qr.onclick=function(){qr.disabled=true;api('/api/games',{method:'POST',json:{show_qr:true}}).then(function(s){gamesShow(s);toast('QR on the wall for 30 s')}).catch(function(){toast('The wall did not answer')}).then(function(){setTimeout(function(){qr.disabled=false},1500)})}}
 
 /* ------------------------------------------------------------ Device */
+/* The vendor's images on the wall (UPDATES.md "Vendor images") */
+function imagesCard(){var m=st.images||{},on=val('owned_config.vendor_images','auto')!=='off',t;
+ t=m.state==='downloading'?'Updating · '+Math.round(100*(m.done||0)/(m.total||1))+'%':m.state==='installed'?'Updated to '+esc(m.installed):
+  m.state==='up_to_date'?'Up to date'+(m.installed?' · '+esc(m.installed):''):m.state==='failed'?'Last try failed: '+esc(m.error||'?')+' · tries again later':
+  m.state==='checking'?'Checking…':m.state==='off'?'Off':m.installed?'Version '+esc(m.installed):'Checks a couple of minutes after the wall starts';
+ return card('Logos and icons','Airline logos, weather icons and aircraft pictures come from the FlightWall maker’s own signed updates, as on their firmware. The wall checks once a week and keeps them current; while it updates, it draws its own aircraft and weather icons.',
+  sw2('owned_config.vendor_images','auto','off','Keep them up to date')+'<p class="note">'+t+(m.available&&m.available!==m.installed?' · newest '+esc(m.available):'')+'</p>')}
+/* a switch for a two-word setting */
+function sw2(path,on,off,label,help){var v=val(path,on)!==off;
+ return '<div class="field row" data-field="'+path+'"><label for="'+idOf(path)+'">'+label+hint(help)+'</label><label class="sw"><input type="checkbox" id="'+idOf(path)+'" data-sw2="'+path+'" data-on="'+on+'" data-off="'+off+'"'+(v?' checked':'')+'><span></span></label></div>'}
 function viewDevice(){return '<div class="grid two">'+
  card('Flights feed','',
   '<p style="margin:4px 0 0">'+esc(FEED[st.feed]||'Unknown')+' · '+(get(st.doc,'owned_config.flight_source')==='community'?'community data':'FlightWall data')+'</p><p class="note">Settings version '+st.rev+' · changes reach the wall within seconds</p><p class="note" id="mem">&nbsp;</p>')+
@@ -523,6 +576,7 @@ function viewDevice(){return '<div class="grid two">'+
   '<p class="note" id="app-state">Checking…</p>'+
   '<div class="btns"><button type="button" class="btn" id="reimport">Copy everything from the app</button></div>'+
   '<p class="note">Replaces all settings here with the app’s, except airport names, Sync flights and where flight data comes from.</p>')+
+ imagesCard()+
  card('Console','The wall\u2019s recent status lines: start-up, the feed, memory. Kept through restarts, not power cuts.',
   '<div class="btns" style="margin-top:4px"><button type="button" class="btn small" id="log-refresh">Refresh</button><button type="button" class="btn small" id="log-copy">Copy</button>'+
   '<label class="row" style="gap:8px;margin-left:auto"><span class="muted" style="font-size:14px">Live</span><span class="sw"><input type="checkbox" id="log-live"><span></span></span></label></div>'+
@@ -573,16 +627,18 @@ function pvSync(){if(!PV.mod||!st.work)return;var a=JSON.stringify(st.aliasWork|
  if(a!==PV.sentA){PV.sentA=a;pvCall(PV.mod.pv_aliases,a)}
  if(w!==PV.sent){PV.sent=w;pvCall(PV.mod.pv_settings,w)}
  pvNote()}
-function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();
+function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();pvWeather();
  api('/api/flights').catch(function(){return null}).then(function(j){var live=!!(j&&j.flights&&j.flights.length),s=JSON.stringify(live?j:SAMPLE);
   PV.live=live;if(s!==PV.sentF){PV.sentF=s;pvCall(PV.mod.pv_flights,s)}pvNote()})}
 function pvLogos(){for(var i=0,p,k;i<8&&(p=PV.mod.pv_logo_wanted(i));i++){k=pvText(p);if(!PV.logos[k]){PV.logos[k]=1;pvLogo(k)}}}
-function pvLogo(k){var al=k.split('|')[0],ac=k.split('|')[1]||'';
- fetch('/api/logo?al='+encodeURIComponent(al)+'&ac='+encodeURIComponent(ac),{headers:key?{Authorization:'Bearer '+key}:{}})
+function pvLogo(k){var a=k.split('|'),al=a[0],ac=a[1]||'',t=a[2]||'';
+ fetch('/api/logo?al='+encodeURIComponent(al)+'&ac='+encodeURIComponent(ac)+'&t='+encodeURIComponent(t),{headers:key?{Authorization:'Bearer '+key}:{}})
  .then(function(r){return r.ok?r.arrayBuffer():new ArrayBuffer(0)},function(){return new ArrayBuffer(0)})
- .then(function(b){var m=PV.mod,bytes=new Uint8Array(b),pa=pvStr(al),pc=pvStr(ac),pp=bytes.length?m.pv_alloc(bytes.length):0;
+ .then(function(b){var m=PV.mod,bytes=new Uint8Array(b),pa=pvStr(al),pc=pvStr(ac),pt=pvStr(t),pp=bytes.length?m.pv_alloc(bytes.length):0;
   if(pp)new Uint8Array(m.memory.buffer,pp,bytes.length).set(bytes);
-  m.pv_logo(pa,pc,pp,bytes.length);[pa,pc,pp].forEach(function(x){if(x)m.pv_free(x)})})}
+  m.pv_logo(pa,pc,pt,pp,bytes.length);[pa,pc,pt,pp].forEach(function(x){if(x)m.pv_free(x)})})}
+/* the wall's weather record for the "no flights" preview ({} = a sample) */
+function pvWeather(){api('/api/weather').catch(function(){return {}}).then(function(j){var s=JSON.stringify(j||{});if(PV.mod&&s!==PV.sentW){PV.sentW=s;pvCall(PV.mod.pv_weather,s)}})}
 /* what the note under the picture says, and how dim the picture is */
 function pvNote(){var n=$('#pv-note');if(!n)return;
  if(PV.failed){n.textContent='The preview needs a newer browser.';return}
@@ -797,10 +853,22 @@ function wire(root){
   el.addEventListener(live?'input':'change',function(){var t=el.dataset.type,v;clearBad(el);
    if(t==='boolean')v=el.checked;else if(t==='number')v=Number(el.value);
    else if(t==='int')v=el.value===''?undefined:Math.max(0,Math.min(20000,Math.round(Number(el.value))));
-   else v=el.value.trim()===''&&/\.(name|label)$/.test(el.dataset.bind)?undefined:el.value.trim();
+   else v=el.value.trim()===''&&/\.(name|label)$/.test(el.dataset.bind)?undefined:el.dataset.upper?el.value.trim().toUpperCase():el.value.trim();
    set(st.work,el.dataset.bind,v);
    if(live)el.nextElementSibling.textContent=v+el.dataset.unit;
    changed();if(t==='boolean')render();else if(/\.(name|label)$/.test(el.dataset.bind))heading(el,v||'')})});
+ $$('[data-quiet]',root).forEach(function(b){b.onclick=function(){var q=b.dataset.quiet,P='display_config.';
+  set(st.work,P+'loading_template',q==='WEATHER'?'CLOCK':q);
+  if(q==='WEATHER')set(st.work,P+'weather.enabled',true);else if(get(st.work,P+'weather'))set(st.work,P+'weather.enabled',false);
+  changed();render()}});
+ $$('[data-slot]',root).forEach(function(el){el.onchange=function(){var lay=val('display_config.layout_template','DEFAULT'),
+   path=el.dataset.slot,slots=get(st.work,'display_config.layout_overrides.area.'+lay+'.slots')||{};
+  set(st.work,path,el.value||undefined);
+  if(!el.value){delete slots[path.split('.').pop()]}
+  changed();render()}});
+ var sr=$('#slots-reset',root);if(sr)sr.onclick=function(){var lay=val('display_config.layout_template','DEFAULT');
+  set(st.work,'display_config.layout_overrides.area.'+lay+'.slots',{});changed();render()};
+ $$('[data-sw2]',root).forEach(function(el){el.onchange=function(){set(st.work,el.dataset.sw2,el.checked?el.dataset.on:el.dataset.off);changed()}});
  var so=$('#sleepOn',root);if(so)so.onchange=function(){set(st.work,'display_config.sleep_time',so.checked?{start:'23:00',end:'07:00',sleep_brightness_percent:0}:undefined);changed();render()};
  $$('[data-speed]',root).forEach(function(el){el.onchange=function(){clearBad(el);set(st.work,el.dataset.speed,el.value===''?undefined:Math.min(400,Math.max(0,Math.round(Number(el.value)*KTS))));changed()}});
  areasWire(root);
@@ -839,7 +907,8 @@ function wire(root){
 /* The firmware accepts only the keys it knows (SETTINGS.md); stored vendor
  * documents can carry others, so whatever is sent is trimmed to these. */
 var KEYS={
- metric_display:['alt_b_unit','vel_unit','vr_unit','trk_unit','dist_unit'],time_zone:['standard_utc_offset_minutes','dst_rule'],
+ metric_display:['alt_b_unit','vel_unit','vr_unit','trk_unit','dist_unit','alt_b_format','vel_format','vr_format','trk_format','dist_format',
+  'temp_unit','wind_unit','vis_unit','ceil_unit'],weather:['enabled','layout'],time_zone:['standard_utc_offset_minutes','dst_rule'],
  clock:['style','show_date','additional_timezones'],date_format:['order','show_weekday'],sleep_time:['start','end','sleep_brightness_percent'],
  additional_timezones:['label','time_zone'],
  radius_requests:['latitude','longitude','radius_km','min_altitude','max_altitude','name'],
@@ -850,9 +919,11 @@ function trim(k,v){var ks=KEYS[k];if(!ks||v==null)return v;
 /* vendor documents use -1 for an unset limit; the firmware wants it left out */
 var LIMITS={min_speed_mps:1,max_speed_mps:1,min_altitude:1,max_altitude:1};
 function pick(ks,o){var c={};ks.forEach(function(k){if(o[k]!==undefined&&o[k]!==null&&!(LIMITS[k]&&o[k]<0))c[k]=trim(k,o[k])});return c}
-var EDITABLE={display_config:['layout_template','loading_template','title_text','flight_display_speed','max_flights_behavior','metric_display','border_enable','border_brightness_percent','brightness_percent','anchor_airports','time_zone','clock_is_24hr','clock_show_seconds','clock','date_format','locale','display_enabled','sleep_time'],
+var EDITABLE={display_config:['layout_template','loading_template','title_text','flight_display_speed','max_flights_behavior','metric_display','border_enable','border_brightness_percent','brightness_percent','anchor_airports','time_zone','clock_is_24hr','clock_show_seconds','clock','date_format','locale','display_enabled','sleep_time',
+  'flight_display_seconds','flight_identity','weather','layout_overrides'],
  request_config:['radius_requests','data_filters','tracked_flights'],
- owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar','heartbeat_enabled']};
+ owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar','heartbeat_enabled','weather_station',
+  'tracked_landed_minutes','vendor_images']};
 function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
   EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
   if(e.radius_requests===null)delete e.radius_requests;
@@ -899,9 +970,9 @@ function loaded(j,quiet){if(!st.appAsked){st.appAsked=1;appAsk()}st.rev=j.revisi
  st.base=clone(st.doc);
  if(!rc.radius_requests&&rc.radius_request)st.base.request_config.radius_requests=[trim('radius_requests',rc.radius_request)];
  st.work=clone(st.base);
- st.aliases=j.aliases||{revision:0,aliases:[]};st.aliasWork=clone(st.aliases.aliases);st.feed=j.feed;
+ st.aliases=j.aliases||{revision:0,aliases:[]};st.aliasWork=clone(st.aliases.aliases);st.feed=j.feed;st.wx=j.weather;st.images=j.images;
  changed();if(!quiet)show();status();if(!st.sync)syncLoad()}
-function refresh(force){if(!key)return;api('/api/settings').then(function(j){if(force||(!st.dirty&&j.revision!==st.rev)||(!st.dirty&&j.aliases&&j.aliases.revision!==st.aliases.revision))loaded(j);else{st.feed=j.feed;status()}}).catch(function(){})}
+function refresh(force){if(!key)return;api('/api/settings').then(function(j){if(force||(!st.dirty&&j.revision!==st.rev)||(!st.dirty&&j.aliases&&j.aliases.revision!==st.aliases.revision))loaded(j);else{st.feed=j.feed;st.wx=j.weather;st.images=j.images;status()}}).catch(function(){})}
 /* With a key saved, a wall that does not answer (restarting, out of reach)
  * means "keep trying", never "sign in again": only a 401 forgets the key. */
 var retryTimer=0;

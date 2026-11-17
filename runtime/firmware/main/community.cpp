@@ -389,7 +389,7 @@ constexpr uint32_t TrackRetryMs = 20000;           /* after a lookup that missed
  * coverage, a busy server) no longer swaps the panel to the nearby flights and
  * back every minute or two. */
 constexpr uint32_t TrackHoldMs = 5 * 60000;
-constexpr uint32_t TrackLandedMs = 10 * 60000;     /* shown this long after landing */
+uint32_t TrackLandedMs = 15 * 60000;               /* shown this long after landing: owned_config.tracked_landed_minutes (4.2: 5, 15 or 30) */
 constexpr uint32_t TrackRestMs = 60 * 60000;       /* then not looked for again for an hour */
 constexpr uint32_t AeroRetryMs = 15 * 60000;       /* a failed FlightAware request */
 constexpr uint32_t AeroPositionMs = 5 * 60000;
@@ -745,12 +745,17 @@ extern "C" bool fw_community_configure(const char *settings_json, FwCommunityInf
         DynamicJsonDocument filter(96), doc(6144);
         filter["request_config"] = true;
         filter["owned_config"]["tracking_source"] = true;
+        filter["owned_config"]["tracked_landed_minutes"] = true;
         bool read = settings_json && !deserializeJson(doc, settings_json, DeserializationOption::Filter(filter),
                                                       DeserializationOption::NestingLimit(12));
         if (read) ok = community_config(doc["request_config"], s->config) == Result::Ok && s->config.count > 0;
         JsonVariantConst list;
         if (read) list = doc["request_config"]["tracked_flights"];
         track_configure(list);
+        {
+            unsigned m = read ? doc["owned_config"]["tracked_landed_minutes"] | 0u : 0u;
+            TrackLandedMs = (m == 5 || m == 15 || m == 30 ? m : 15) * 60000u;
+        }
         bool aero = read && doc["owned_config"]["tracking_source"] == "aeroapi";
         if (aero != s->aero_wanted) {
             s->aero_wanted = aero;

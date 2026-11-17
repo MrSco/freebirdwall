@@ -135,6 +135,17 @@ TESTS = {
         'third_party': [CJSON / 'cJSON.c'],
         'includes': [FIRMWARE / 'components/fw_settings/include', CJSON],
     },
+    'test_weather': {
+        'sources': [HERE / 'test_weather.c',
+                    FIRMWARE / 'components/fw_weather/fw_weather.c',
+                    FIRMWARE / 'components/fw_clock/fw_clock.c',
+                    FIRMWARE / 'components/fw_clock/clock_tables.c',
+                    FIRMWARE / 'components/fw_text/fw_text.c',
+                    FIRMWARE / 'components/fw_text/font5x7.c',
+                    FIRMWARE / 'components/fw_text/vendor_charmap.c'],
+        'includes': [FIRMWARE / 'components/fw_weather/include', FIRMWARE / 'components/fw_clock/include',
+                     FIRMWARE / 'components/fw_clock', FIRMWARE / 'components/fw_text/include'],
+    },
     'test_scroll': {
         'sources': [HERE / 'test_scroll.c',
                     FIRMWARE / 'components/fw_flight/fw_flight.c',
@@ -196,7 +207,7 @@ def main():
                 print('BUILD FAIL %s\n%s' % (name, build.stderr))
                 failed += 1
                 continue
-            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            run = subprocess.run([str(exe)], capture_output=True, text=True, encoding='utf-8', errors='replace')
             print(('ok   ' if run.returncode == 0 else 'FAIL ') + name + ': ' + (run.stdout + run.stderr).strip())
             failed += run.returncode != 0
     sys.exit(1 if failed else 0)

@@ -133,3 +133,49 @@ without the owner update service needs USB for the first owned install.
   (`analysis/route-tls/rebuild-check/owner-provider-v1-fb336e55529a/`)
   passes the desk validator, so from a kept owned image stock can also be put
   back by uploading it, if the other slot ever no longer holds it.
+
+## Vendor images
+
+The logos, weather icons and aircraft pictures live in the vendor's LittleFS
+partition (`spiffs`), which the vendor firmware keeps current from its own
+signed filesystem updates (vendor 4.2.4 `FUN_42032714`). A wall that left the
+vendor firmware before 4.1 lacks the weather icons and aircraft pictures, so
+`main/vendor_images.cpp` does the same check (owned_config.vendor_images,
+default `auto`; `off` stops it):
+
+- About two minutes after start, then weekly (30 minutes after a failure):
+  `https://cdn.theflightwall.com/filesystem/mini-v1/manifest.json` (GTS Root
+  R4 pinned). The variant by partition size (`2-5mb-fs` for the mini).
+- The manifest signature, ECDSA P-256 over the vendor's canonical text
+  (`type`, `device_model`, `ota_track`, `storage_security_profile`,
+  `version`, `fs_size_variant`, `url`, `size`, `sha256`,
+  `artifact_signature`, `artifact_signature_url`, `signature_alg`, `key_id`,
+  `rollback_epoch`, one `key=value` line each), against the vendor's key
+  `ota-prod-2026-03` as app 4.2.4 embeds it; checked with the source-built
+  TLS library (`fw_tls_ecdsa_p256_verify`). Then mini-v1, `legacy`,
+  `plain-nvs-v1`, an image under `cdn.theflightwall.com/filesystem/mini-v1/`,
+  no larger than the partition.
+- Installed: `/version.txt` on the partition (the vendor firmware deletes it
+  once read), else what this firmware installed (`fw_owned/fs_ver`). Only a
+  strictly newer version, and never a lower `rollback_epoch`; a wall with no
+  version and no weather icons, or a partition that does not mount, takes it.
+- The image in 128 KiB `Range` requests, each written straight into the
+  partition after erasing its sectors, one request per feed-task pass, so
+  flights keep updating. Stock stages in the other app slot first; the owned
+  firmware never does, since that slot keeps the vendor firmware.
+- Then the partition is read back and hashed: the manifest's SHA-256 and the
+  vendor's signature of it must match; it must mount with the default logo.
+  Only then `fw_owned/fs_ver`, `fs_epoch` are written.
+- While it is rewritten, `fw_assets_hold` keeps the filesystem unmounted: the
+  screens draw the owned silhouettes and weather icons. `fw_owned/fs_dirty`
+  marks a run in progress, so a restart part-way keeps the partition unused
+  and downloads again. The partition is never formatted. Status on the
+  dashboard (Device › Logos and icons) and as `vendor_images` log lines.
+
+## Wi-Fi: protocol fallback (vendor 4.2)
+
+Vendor 4.2.4 joins in 802.11b/g and allows b/g/n after two attempts in a row
+time out ("a Wi-Fi fix for some routers", `FUN_42023c90`, `FUN_42027edc`).
+The owned firmware starts with b/g/n, as walls joining today expect, and two
+timed-out attempts in a row switch between b/g/n and b/g (`main/wifi_link.c`,
+RAM only; logged in `wifi_attempt` as `bg_only`).

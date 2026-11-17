@@ -3,6 +3,8 @@
  * "Authorization: Bearer <key>" (the paired browser's key, or the device key
  * the desk uses). Never logs keys, codes or settings values. */
 #include "dashboard_api.h"
+#include "weather.h"
+#include "vendor_images.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -205,8 +207,18 @@ static esp_err_t send_settings(httpd_req_t *req, const char *status){
         fw_big_give();
         return error(req, "500 Internal Server Error", n < 0 ? "settings too large" : "aliases");
     }
-    snprintf(out, cap, "{\"revision\":%u,\"settings\":%s,\"aliases\":%s,\"feed\":%d}", (unsigned)rev, n ? doc : "null",
-             aliases, (int)fw_feed_state());
+    {   /* 4.2: where the weather comes from, and the vendor's images (weather.h, vendor_images.h) */
+        char src[20], stn[8];
+        unsigned wx_status = 0, wx_requests = 0, wx_failures = 0;
+        FwVendorImagesStatus im;
+        fw_weather_status(src, sizeof src, stn, sizeof stn, &wx_status, &wx_requests, &wx_failures);
+        fw_vendor_images_status(&im);
+        snprintf(out, cap, "{\"revision\":%u,\"settings\":%s,\"aliases\":%s,\"feed\":%d,"
+                 "\"weather\":{\"source\":\"%s\",\"station\":\"%s\",\"status\":%u,\"requests\":%u,\"failures\":%u},"
+                 "\"images\":{\"state\":\"%s\",\"installed\":\"%s\",\"available\":\"%s\",\"error\":\"%s\",\"done\":%u,\"total\":%u}}",
+                 (unsigned)rev, n ? doc : "null", aliases, (int)fw_feed_state(), src, stn, wx_status, wx_requests,
+                 wx_failures, im.state, im.installed, im.available, im.error, (unsigned)im.done, (unsigned)im.total);
+    }
     e = reply(req, status, out);
     memset(b, 0, 2 * PART + strlen(out));
     fw_big_give();
@@ -511,11 +523,12 @@ static void url_decode(char *s){
 
 static bool logo_exists(void *ctx, const char *path){ (void)ctx; return fw_assets_exists(path); }
 
-/* GET /api/logo?al=<airline code>&ac=<aircraft class>: the logo file the wall
- * itself would draw for that flight (LOGOS.md), resolved and read from the
- * asset partition like display.cpp's decode_logo; 404 when there is none. */
+/* GET /api/logo?al=<airline code>&ac=<aircraft class>&t=<ICAO type>: the
+ * picture file the wall itself would draw for that flight (LOGOS.md), resolved
+ * and read from the asset partition like display.cpp's decode_logo; 404 when
+ * there is none, so the wall draws its own silhouette (the preview does too). */
 static esp_err_t logo_get(httpd_req_t *req){
-    char q[96], al[8] = "", ac[32] = "", path_buf[FW_LOGO_PATH_MAX];
+    char q[112], al[8] = "", ac[32] = "", t[8] = "", path_buf[FW_LOGO_PATH_MAX];
     const char *path;
     uint8_t *buf;
     esp_err_t r;
@@ -524,12 +537,14 @@ static esp_err_t logo_get(httpd_req_t *req){
     if (httpd_req_get_url_query_str(req, q, sizeof q) == ESP_OK) {
         if (httpd_query_key_value(q, "al", al, sizeof al) != ESP_OK) al[0] = 0;
         if (httpd_query_key_value(q, "ac", ac, sizeof ac) != ESP_OK) ac[0] = 0;
+        if (httpd_query_key_value(q, "t", t, sizeof t) != ESP_OK) t[0] = 0;
         url_decode(al);
         url_decode(ac);
+        url_decode(t);
     }
     if (!fw_assets_mount_partition()) return error(req, "404 Not Found", "no logos");
-    path = fw_logo_resolve(al, ac, logo_exists, NULL, path_buf, sizeof path_buf);
-    if (!path) return error(req, "404 Not Found", "no logo");
+    path = fw_logo_resolve_42(al, t, ac, logo_exists, NULL, path_buf, sizeof path_buf);
+    if (!path || path[0] == '@') return error(req, "404 Not Found", "no logo");
     n = fw_assets_file_size(path);                  /* most logos are under 1 KB, the largest 2,907 bytes */
     if (n <= 0 || n > 8192) return error(req, "404 Not Found", "no logo");
     if (!(buf = malloc((size_t)n))) return error(req, "503 Service Unavailable", "busy; try again");
@@ -540,6 +555,40 @@ static esp_err_t logo_get(httpd_req_t *req){
     r = httpd_resp_send(req, (const char *)buf, n);
     free(buf);
     return r;
+}
+
+/* GET /api/weather: the weather record the wall holds (weather.h), with the
+ * feed's keys, for the preview; {} when there is none. */
+static esp_err_t weather_get(httpd_req_t *req){
+    static const char *const cats[] = {"", "VFR", "MVFR", "IFR", "LIFR"};
+    static const char *const conds[] = {"", "clear", "partly_cloudy", "cloudy", "overcast", "fog", "rain", "snow", "thunder"};
+    FwWeather w;
+    Json j;
+    if (!gate(req)) return ESP_OK;
+    fw_weather_store_copy(&w);
+    j.at = 0;
+    put(&j, "{\"v\":1");
+    if (fw_weather_valid(&w)) {
+        put_str(&j, "stn", w.stn); put_str(&j, "name", w.name); put_str(&j, "raw", w.raw);
+        put_str(&j, "cat", cats[w.cat <= 4 ? w.cat : 0]); put_str(&j, "cond", conds[w.cond <= 8 ? w.cond : 0]);
+        put(&j, ",\"obs\":%u", (unsigned)w.obs);
+        if (w.utc_at) put(&j, ",\"utc_at\":%u", (unsigned)w.utc_at);
+        if (w.has_wdir) put(&j, ",\"wdir\":%u", (unsigned)w.wdir);
+        if (w.has_wspd) put(&j, ",\"wspd\":%u", (unsigned)w.wspd);
+        if (w.has_wgst) put(&j, ",\"wgst\":%u", (unsigned)w.wgst);
+        if (w.has_vis) put(&j, ",\"vis_m\":%u", (unsigned)w.vis_m);
+        if (w.has_ceil) put(&j, ",\"ceil_ft\":%u", (unsigned)w.ceil_ft);
+        if (w.has_temp) put(&j, ",\"temp_c\":%d", w.temp_c);
+        if (w.has_utc_off) put(&j, ",\"utc_off\":%d", w.utc_off);
+        if (w.has_utc_next) put(&j, ",\"utc_next\":%d", w.utc_next);
+        put_flag(&j, "auto", w.is_auto); put_flag(&j, "night", w.night); put_flag(&j, "wvar", w.wvar);
+        put_flag(&j, "vis_plus", w.vis_plus);
+    }
+    put(&j, "}");
+    if (j.at >= sizeof j.buf) return error(req, "500 Internal Server Error", "weather too long");
+    j.buf[j.at] = 0;
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return reply(req, "200 OK", j.buf);
 }
 
 /* The wall's memory now (memory_probe.h), for the dashboard's Device tab. */
@@ -572,6 +621,7 @@ void fw_dashboard_api_register(httpd_handle_t h){
         {.uri = "/api/tracking", .method = HTTP_PUT, .handler = tracking_put},
         {.uri = "/api/flights", .method = HTTP_GET, .handler = flights_get},
         {.uri = "/api/logo", .method = HTTP_GET, .handler = logo_get},
+        {.uri = "/api/weather", .method = HTTP_GET, .handler = weather_get},
         {.uri = "/api/memory", .method = HTTP_GET, .handler = memory_get},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(h, &routes[i]);

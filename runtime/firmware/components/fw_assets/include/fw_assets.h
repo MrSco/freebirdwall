@@ -36,6 +36,12 @@ int fw_assets_read_file(const char *path, uint8_t *buf, size_t cap);
 
 void fw_assets_unmount(void);
 
+/* Owned (UPDATES.md "Vendor images"): while held the filesystem is unmounted
+ * and will not mount, so its partition can be rewritten; every read answers
+ * "missing" meanwhile. */
+void fw_assets_hold(bool held);
+bool fw_assets_held(void);
+
 #ifdef __cplusplus
 }
 #endif

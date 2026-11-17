@@ -1,6 +1,7 @@
 #include "tls_client.h"
 #include "mbedtls/memory_buffer_alloc.h"
 #include "mbedtls/entropy.h"
+#include "mbedtls/ecdsa.h"
 #include <atomic>
 #include <climits>
 #include <cstring>
@@ -138,5 +139,27 @@ void Client::close(){
     ready_=initialized_=handshake_=owns_=false;io_.close(io_.user);
     tls_clock=nullptr;tls_clock_user=nullptr;
     active.store(0,std::memory_order_release);
+}
+/* ECDSA P-256 over a SHA-256 digest, for the vendor's signed asset updates
+ * (UPDATES.md "Vendor images"). The key is its uncompressed point (65 bytes),
+ * the signature ASN.1 DER. Takes the arena like a connection, so never during
+ * one. */
+bool ecdsa_p256_verify(uint8_t *arena,size_t capacity,const uint8_t *point,size_t point_len,
+                       const uint8_t *hash,const uint8_t *sig,size_t sig_len){
+    if(!arena||capacity<4096||capacity>128*1024||!point||point_len!=65||!hash||!sig||!sig_len||sig_len>80)return false;
+    unsigned expected=0;
+    if(!active.compare_exchange_strong(expected,1,std::memory_order_acquire))return false;
+    mbedtls_memory_buffer_alloc_init(arena,capacity);
+    mbedtls_ecdsa_context key;
+    mbedtls_ecdsa_init(&key);
+    int rc=mbedtls_ecp_group_load(&key.MBEDTLS_PRIVATE(grp),MBEDTLS_ECP_DP_SECP256R1);
+    if(!rc)rc=mbedtls_ecp_point_read_binary(&key.MBEDTLS_PRIVATE(grp),&key.MBEDTLS_PRIVATE(Q),point,point_len);
+    if(!rc)rc=mbedtls_ecp_check_pubkey(&key.MBEDTLS_PRIVATE(grp),&key.MBEDTLS_PRIVATE(Q));
+    if(!rc)rc=mbedtls_ecdsa_read_signature(&key,hash,32,sig,sig_len);
+    mbedtls_ecdsa_free(&key);
+    mbedtls_memory_buffer_alloc_free();
+    std::memset(arena,0,capacity);
+    active.store(0,std::memory_order_release);
+    return rc==0;
 }
 }

@@ -3,8 +3,8 @@
 /* Tables generated from the vendor image by tools/make_vendor_tables.py. */
 #include "fw_text.h"
 
-#define FW_VENDOR_CHARMAP_COUNT 134
-#define FW_VENDOR_EXTRA_COUNT 63
+#define FW_VENDOR_CHARMAP_COUNT 133
+#define FW_VENDOR_EXTRA_COUNT 68
 
 typedef struct { uint16_t cp; uint8_t glyph; } FwCharMapEntry;
 

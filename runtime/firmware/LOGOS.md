@@ -75,3 +75,21 @@ runs bottomed out near 154 KB. In the real firmware, logos are decoded when new
 airlines appear, so decoding must be serialised with TLS work and each
 airline's 2 KB result cached rather than re-decoded. The decoded-logo buffer
 can also shrink from 64×64 to the layout's 32×32.
+
+## Silhouettes (vendor 4.2)
+
+Vendor 4.2.4 draws an aircraft silhouette when the airline has no logo
+(`FUN_42009624`, replacing `FUN_420083e8`): the airline's PNG when it exists;
+else the family of the ICAO type (`ac_icao`, kept in `ac_type`) from a
+2,883-entry table (`FUN_420083f8`, written to
+`components/fw_logo/aircraft_families.c` by `tools/make_vendor_tables.py`);
+else by `ac_class` (Heli, Light, Smalljet); else `default` (the four-engine
+family). `default.png` and the category PNGs are no longer drawn. The eight
+family pictures are built into the vendor app; the owned firmware draws its
+own (`fw_silhouette`, `components/fw_logo/fw_silhouette.c`: simple shapes,
+white on black, sized and placed like a logo). Owned addition: before the
+family, the type's own picture `/images/aircraft/<TYPE>.png` when the wall's
+filesystem has it (the vendor's filesystem update 0.1.11 carries 348; app
+4.2.4 does not use them yet). The display keys its logo cache by airline,
+type and class (`logo_key`). The preview does the same (`pv_logo` draws the
+silhouette when `/api/logo?al=&ac=&t=` has no file).

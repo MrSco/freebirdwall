@@ -32,15 +32,17 @@ SOURCES = [FW / 'preview/fw_preview.c', FW / 'components/fw_screens/fw_screens.c
            FW / 'components/fw_text/fw_text.c', FW / 'components/fw_text/font5x7.c',
            FW / 'components/fw_text/vendor_charmap.c',
            FW / 'components/fw_clock/fw_clock.c', FW / 'components/fw_clock/clock_tables.c',
+           FW / 'components/fw_weather/fw_weather.c',
            FW / 'components/fw_flight/fw_flight.c', FW / 'components/fw_flight/fw_rotation.c',
-           FW / 'components/fw_logo/fw_logo.c', FW / 'components/pngdec/pngdec_unit.c',
+           FW / 'components/fw_logo/fw_logo.c', FW / 'components/fw_logo/fw_silhouette.c',
+           FW / 'components/fw_logo/aircraft_families.c', FW / 'components/pngdec/pngdec_unit.c',
            FW / 'components/fw_feed/fw_feed_config.c', REPO / 'shared/owner_alias.c',
            FW / 'components/qrcode/fw_qr.c', DEPS / 'qrcode/src/qrcode.c',
            CJSON / 'cJSON.c'] + [
            PNGDEC / n for n in ('adler32.c', 'crc32.c', 'infback.c', 'inffast.c', 'inflate.c', 'inftrees.c', 'zutil.c')]
 INCLUDES = [FW / 'components/fw_screens/include', FW / 'components/fw_text/include',
-            FW / 'components/fw_clock/include', FW / 'components/fw_clock',
-            FW / 'components/fw_flight/include', FW / 'components/fw_logo/include', PNGDEC,
+            FW / 'components/fw_clock/include', FW / 'components/fw_clock', FW / 'components/fw_weather/include',
+            FW / 'components/fw_flight/include', FW / 'components/fw_logo/include', FW / 'components/fw_logo', PNGDEC,
             FW / 'components/fw_feed/include', FW / 'components/fw_sync/include', REPO / 'shared', CJSON,
             FW / 'components/qrcode/include', DEPS / 'qrcode/src']
 DEFINES = ['-D__LINUX__=1', '-DPNG_MAX_BUFFERED_PIXELS=((128*4+1)*2)']

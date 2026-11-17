@@ -37,7 +37,7 @@ void fw_screen_element_text(const FwSurface *s, const FwElement *e, const char *
  * one pixel per FW_SCROLL_PX_MS, still at the end, again from the start),
  * redrawing only them. Every full screen here forgets them;
  * fw_screen_scroll_reset does too, for screens drawn elsewhere. */
-#define FW_SCROLL_LINES 5
+#define FW_SCROLL_LINES 7             /* 4.2 slots: three whole lines and two split ones */
 #define FW_SCROLL_HOLD_MS 1000
 #define FW_SCROLL_PX_MS 40             /* default 25 px/s: a pixel per 40 ms panel pass */
 #define FW_SCROLL_END_MS 1000

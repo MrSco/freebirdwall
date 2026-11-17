@@ -331,3 +331,56 @@ settings unchanged).
 The 95 KB low point confirms the earlier note: in the real firmware, logo
 decodes must not run during TLS work (serialise them, and cache each
 airline's 2 KB result).
+
+## Vendor 4.2: custom lines, short names, formats
+
+Recovered from vendor app 4.2.4 (`6f521120…`). Code: `fw_flight_slots`,
+`fw_flight_card_parts`, `fw_flight_part_text` (components/fw_flight); tests in
+`tests/test_flight.c` ("vendor 4.2") and the `slots_*`, `short_airline`
+preview scenarios.
+
+**Slots** (`display_config.layout_overrides.area.<layout_template>.slots`,
+`FUN_4201d5ec`): `{slot: field}`, fields `empty airline callsign registration
+aircraft_type origin destination route altitude speed track vertical_rate`
+(templates `""`, `{al_name}`, `{cs}`, `{reg}`, `{ac_name}`, `{orig_name}`,
+`{dest_name}`, `{orig_iata}-{dest_iata}`, `{alt_b}`, `{vel}`, `{trk}`, `{vr}`).
+Only the current layout's entry is read; an override equal to the slot's
+default is none (`FUN_4200aa84`).
+
+| Layout | Slots (default) |
+| --- | --- |
+| DEFAULT | heading1 (airline), heading2 (route), heading3 (aircraft type), footer1 (origin), footer2 (destination) |
+| NO_LOGO | heading1, heading2a (route) / heading2b (aircraft type), heading3 (origin), footer1 (destination), footer2a (altitude) / footer2b (speed) |
+| TECHNICAL | heading1, heading2, heading3, footer1a (altitude) / footer1b (speed), footer2a (track) / footer2b (vertical rate) |
+
+A line splits into halves (width W/2, the right one at x + W/2: 62 px, ten
+characters on the mini) only when one of its halves is overridden; the other
+half keeps its default field (`FUN_4200b2fc`). With any override the card is
+in "fit" mode: a line too long is expanded again without its
+`Alt:`/`Spd:`/`Trk:`/`Vr:` labels; stock then cuts it to w/6 − 3 characters
+plus `...` (`FUN_4200957c`), the owned firmware scrolls it instead. The
+tracked and Sync cards ignore the slots.
+
+**New tokens:** `{orig_name}`, `{dest_name}` (the names without the
+"Arriving from" / "Departing to" anchor rule). `{trk_dist}` in metres now
+switches to km from 1000 m (`FUN_42008b64`).
+
+**Flight number:** `display_config.flight_identity` `iata_flight_number` makes
+`{cs}` the feed's `fn` when it has one (`FUN_42009bc8`); `{reg}` falls back to
+the raw callsign, never `fn`.
+
+**Formats** (`metric_display.*_format`, `FUN_4201d4dc`): any non-default value
+drops the field's label from every template (`FUN_420098e0`);
+`alt_b_format` `flight_level` with feet gives `FL%03ld`; `trk_format` `short`
+with degrees gives `225°`; `vr_format` `short` gives an arrow and the
+magnitude without unit (`↑1200`, `↓800`, `0` within ±0.1 m/s).
+
+**Short airline names:** the feed's `al_short` (≤30 bytes; `al_name` is now
+≤35) replaces the name in an element whose template is exactly `{al_name}`
+when the name has more than w/6 characters (`FUN_42009d70`), e.g. "Air New
+Zealand" → "Air NZ" beside the logo. Owned order: the full name if it fits,
+`al_short` if it fits, then the owned shortening ("JetBlue Airways" →
+"JetBlue"), then whichever is left scrolls.
+
+**Hold time:** `display_config.flight_display_seconds` 2, 3, 5, 10, 20 or 30
+overrides `flight_display_speed` (`FUN_4201d53c`).

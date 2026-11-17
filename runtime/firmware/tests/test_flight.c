@@ -159,7 +159,8 @@ int main(void){
     CHECK_STR(dist("kilometers", 1500), "1.5km");
     CHECK_STR(dist("nautical_miles", 370400), "200NM");
     CHECK_STR(dist("feet", 1000), "3281ft");
-    CHECK_STR(dist("meters", 1000), "1000m");
+    CHECK_STR(dist("meters", 999), "999m");
+    CHECK_STR(dist("meters", 1000), "1.0km");          /* 4.2: kilometres from 1000 m */
     CHECK_STR(dist("miles", NAN), "N/A");
 
     /* --- names and text ----------------------------------------------------- */
@@ -628,6 +629,103 @@ int main(void){
         strcpy(g.orig_iata, "DJT");
         fw_flight_expand(&st, &g, "{orig_iata}-{dest_iata}", out, sizeof out);
         CHECK_STR(out, "PBI-PBI");
+    }
+
+    /* --- vendor 4.2: formats, flight number, short names, slots (LAYOUTS.md) --- */
+    {
+        char t[FW_FLIGHT_TEXT_MAX];
+        FwFlightSettings st = settings();
+        FwFlight g = sample();
+        FwCardPart parts[2];
+        int n;
+        g.alt_b = 10668;                   /* 35,000 ft */
+        g.vel = 231.5; g.trk = 225; g.vr = 6.1;
+        fw_units_parse(&st.units, "feet", "mph", "fpm", NULL, NULL);
+        st.alt_format = 2;
+        CHECK_STR(expand(&st, &g, "Alt:{alt_b},Spd:{vel}"), "FL350,Spd:518mph");   /* the label goes with a format */
+        g.alt_b = 152.4;
+        CHECK_STR(expand(&st, &g, "{alt_b}"), "FL005");
+        g.alt_b = -30;
+        CHECK_STR(expand(&st, &g, "{alt_b}"), "FL000");
+        fw_units_parse(&st.units, "meters", "mph", "fpm", NULL, NULL);
+        g.alt_b = 10668;
+        CHECK_STR(expand(&st, &g, "Alt:{alt_b}"), "10km");          /* flight level needs feet; the label still goes */
+        st.alt_format = 0; st.trk_format = 1; st.vr_format = 1;
+        CHECK_STR(expand(&st, &g, "Trk:{trk},Vr:{vr}"), "225\xC2\xB0,\xE2\x86\x91" "1201");
+        g.vr = -4.0;
+        CHECK_STR(expand(&st, &g, "{vr}"), "\xE2\x86\x93" "787");
+        g.vr = 0.05;
+        CHECK_STR(expand(&st, &g, "{vr}"), "0");
+        fw_units_parse(&st.units, NULL, NULL, NULL, "cardinal", NULL);
+        CHECK_STR(expand(&st, &g, "{trk}"), "SW");                  /* the short track is for degrees only */
+
+        st = settings();
+        strcpy(g.fn, "AA1234");
+        CHECK_STR(expand(&st, &g, "{cs}"), "AAL1234");
+        st.flight_number = true;
+        CHECK_STR(expand(&st, &g, "{cs}"), "AA1234");
+        g.reg[0] = 0;
+        CHECK_STR(expand(&st, &g, "{reg}"), "AAL1234");             /* never the flight number */
+        CHECK_STR(expand(&st, &g, "{orig_name} / {dest_name}"), "Charlotte Douglas / Palm Beach Intl");
+        {
+            static const char *const anchors[] = {"PBI"};
+            st.anchors = anchors; st.anchor_count = 1;
+            CHECK_STR(expand(&st, &g, "{orig} / {orig_name}"), "Arriving from / Charlotte Douglas");   /* no anchor rule */
+        }
+
+        /* al_short when the name does not fit 86 px (14 characters) */
+        st = settings();
+        strcpy(g.al_name, "Air New Zealand");
+        strcpy(g.al_short, "Air NZ");
+        CHECK(fw_flight_text(&st, &g, "heading1", 86, t, sizeof t));
+        CHECK_STR(t, "Air NZ");
+        CHECK(fw_flight_text(&st, &g, "heading1", 124, t, sizeof t));
+        CHECK_STR(t, "Air New Zealand");                              /* it fits: the full name */
+        strcpy(g.al_name, "JetBlue Airways Corporation");
+        g.al_short[0] = 0;
+        CHECK(fw_flight_text(&st, &g, "heading1", 86, t, sizeof t));
+        CHECK_STR(t, "JetBlue Airways Corporation");                  /* no short name: it scrolls */
+        strcpy(g.al_name, "JetBlue Airways");
+        CHECK(fw_flight_text(&st, &g, "heading1", 86, t, sizeof t));
+        CHECK_STR(t, "JetBlue");                                      /* our own shortening */
+
+        /* slots: none set -> the stock lines */
+        st = settings();
+        st.layout = "TECHNICAL";
+        n = fw_flight_card_parts(&st, "footer1", 2, 124, parts);
+        CHECK(n == 1 && !strcmp(parts[0].tmpl, "Alt:{alt_b},Spd:{vel}") && !parts[0].fit);
+        /* footer1b (index 4) -> registration: footer1 splits, the other half keeps its default */
+        st.slots[4] = FW_FIELD_REGISTRATION + 1;
+        n = fw_flight_card_parts(&st, "footer1", 2, 124, parts);
+        CHECK(n == 2 && parts[0].x == 2 && parts[0].w == 62 && parts[1].x == 64 && parts[1].w == 62);
+        CHECK(!strcmp(parts[0].name, "footer1a") && !strcmp(parts[0].tmpl, "{alt_b}"));
+        CHECK(!strcmp(parts[1].name, "footer1b") && !strcmp(parts[1].tmpl, "{reg}") && parts[1].fit);
+        n = fw_flight_card_parts(&st, "footer2", 2, 124, parts);
+        CHECK(n == 1 && !strcmp(parts[0].tmpl, "Trk:{trk},Vr:{vr}") && parts[0].fit);   /* fit mode everywhere */
+        /* choosing a slot's default is no override */
+        memset(st.slots, 0, sizeof st.slots);
+        st.slots[3] = FW_FIELD_ALTITUDE + 1;
+        n = fw_flight_card_parts(&st, "footer1", 2, 124, parts);
+        CHECK(n == 1 && !parts[0].fit);
+        /* a whole line: heading3 -> origin; empty clears it */
+        st.slots[2] = FW_FIELD_ORIGIN + 1;
+        n = fw_flight_card_parts(&st, "heading3", 40, 86, parts);
+        CHECK(n == 1 && !strcmp(parts[0].tmpl, "{orig_name}"));
+        st.slots[2] = FW_FIELD_EMPTY + 1;
+        n = fw_flight_card_parts(&st, "heading3", 40, 86, parts);
+        fw_flight_part_text(&st, &g, &parts[0], t, sizeof t);
+        CHECK(n == 1 && t[0] == 0);
+        /* fit mode drops the labels of a line that does not fit */
+        st.slots[2] = 0;
+        st.slots[0] = FW_FIELD_CALLSIGN + 1;
+        g.alt_b = 10668; g.vel = 231.5;
+        fw_units_parse(&st.units, "feet", "mph", NULL, NULL, NULL);
+        n = fw_flight_card_parts(&st, "footer1", 2, 60, parts);
+        fw_flight_part_text(&st, &g, &parts[0], t, sizeof t);
+        CHECK(n == 1);
+        CHECK_STR(t, "35kft,518mph");
+        CHECK(fw_flight_field_parse("vertical_rate") == FW_FIELD_VERTICAL_RATE && fw_flight_field_parse("x") < 0);
+        CHECK(!fw_flight_slots(true, "PLUS_SYNC_ACTIVE_MAIN", &n) && n == 0);
     }
 
     printf("PASS: %d flight checks\n", checks);

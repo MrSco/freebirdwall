@@ -33,6 +33,9 @@ struct Transport {
 /* Dedicated source-built library, one active connection at a time. Its arena
  * allocator is process-global inside this library, so it must never be linked
  * into the patched stock runtime under stock mbedtls symbol names. */
+bool ecdsa_p256_verify(uint8_t *arena,size_t arena_bytes,const uint8_t *point,size_t point_len,
+                       const uint8_t *hash,const uint8_t *sig,size_t sig_len);
+
 class Client {
 public:
     Client()=default;
