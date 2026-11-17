@@ -288,9 +288,10 @@ static void read_record(Rd *r, FwFlight *f){
         else if (!strcmp(key, "al_name")) read_str_soft(r, f->al_name, sizeof f->al_name, &f->al_name_cut);
         else if (!strcmp(key, "al_short")) read_str_soft(r, f->al_short, sizeof f->al_short, &f->al_short_cut);
         else if (!strcmp(key, "fn")) {
-            read_str_soft(r, f->fn, sizeof f->fn, NULL);     /* FUN_420087d8: 1..11, first a letter or digit */
-            if (!((f->fn[0] >= 'A' && f->fn[0] <= 'Z') || (f->fn[0] >= 'a' && f->fn[0] <= 'z') ||
-                  (f->fn[0] >= '0' && f->fn[0] <= '9')))
+            bool cut;                                         /* FUN_420087d8: 1..11, first a letter or digit */
+            read_str_soft(r, f->fn, sizeof f->fn, &cut);      /* owned: kept to 7 (AA1234A); longer is dropped, never cut */
+            if (cut || !((f->fn[0] >= 'A' && f->fn[0] <= 'Z') || (f->fn[0] >= 'a' && f->fn[0] <= 'z') ||
+                         (f->fn[0] >= '0' && f->fn[0] <= '9')))
                 f->fn[0] = 0;
         }
         else if (!strcmp(key, "ac_icao")) {               /* 4.2: the type for the silhouette, kept in ac_type */

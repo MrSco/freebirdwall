@@ -60,5 +60,22 @@ CONFIG_HTTPD_WS_SUPPORT=y
 # Three HTTP servers (setup, dashboard/games, owner updates) plus TLS and DNS.
 CONFIG_LWIP_MAX_SOCKETS=16
 
+# Two segments in flight per connection instead of four. Without PSRAM the
+# wall idles at about 30 KiB free, and a phone loading the dashboard (two
+# large pages, several connections) while another plays took it to under
+# 5 KiB; at zero Wi-Fi drops every frame and the wall goes deaf (UPDATES.md
+# "Network watchdog"). Pages arrive a little slower; nothing else changes.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=2880
+
+# Each received frame copied out of the Wi-Fi driver's 1.6 KiB buffer into one
+# its own size, and the driver's buffer returned at once. Without it a frame
+# keeps its driver buffer until the application reads it; the web server
+# reads one connection at a time, so two phones' requests and paddle moves
+# waiting while it sent a page held all 16 dynamic RX buffers: Wi-Fi then
+# could not receive the acknowledgements that would have let the page finish,
+# and the wall went deaf for good. Measured on the wall (UPDATES.md "Network
+# watchdog").
+CONFIG_LWIP_L2_TO_L3_COPY=y
+
 # Browser requests to the dashboard (Authorization, If-Match, Origin, Referer...)
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024

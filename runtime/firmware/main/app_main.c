@@ -56,6 +56,7 @@
 #include "panic_note.h"
 #include "board_check.h"
 #include "sync_store.h"
+#include "net_watch.h"
 
 /* The TLS engine's arena is the shared block (big_buffer.h), its context is
  * in community.cpp: the community source and, in probe builds, the route probe
@@ -233,10 +234,15 @@ void app_main(void){
         }
         fw_state("{\"event\":\"kept\",\"note\":\"confirmed by the owner; staying up\"}");
     }
-    /* Flashed directly (not pending): stay up and keep reporting, so long-run
-     * heap drift is visible on the console. */
-    for(;;){
-        vTaskDelay(pdMS_TO_TICKS(600000));   /* every 10 min: the 7 KiB log then spans hours */
-        fw_mem_report("idle",NULL);
+    /* Stay up: the network watchdog every second (net_watch.h: a wall that
+     * went deaf on a joined network restarts, log kept), and a memory report
+     * every 10 min so long-run heap drift shows (the 7 KiB log spans hours). */
+    for(int64_t idle_at=esp_timer_get_time()+600000000LL;;){
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        fw_net_watch_tick();
+        if(esp_timer_get_time()>=idle_at){
+            idle_at+=600000000LL;
+            fw_mem_report("idle",NULL);
+        }
     }
 }

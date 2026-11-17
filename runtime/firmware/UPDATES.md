@@ -94,6 +94,55 @@ planned restart, an upload) starts it again, so a power cycle retries the
 normal start. `CONFIG_FW_SAFE_MODE_TEST` builds a test image that always
 starts in safe mode, to check it on the board (it still rolls back).
 
+**Network watchdog.** A wall can go deaf without crashing: with its memory
+used up, Wi-Fi and lwIP drop every frame, so nothing is ever acknowledged or
+freed, and the panel keeps drawing the clock while the wall answers nothing,
+not even a ping. No task starves, so the task watchdog never fires (this
+happened with two phones on the dashboard and the games page at once). So
+`main/net_watch.c` pings the router every 15 s and, while Wi-Fi is joined,
+restarts the wall (a planned restart: the log is kept, the crash count is
+not touched) when the router answered earlier and has not for 150 s, or when
+free memory stays under 4 KiB for a minute. A router that never answers pings
+is never held against the wall, and nothing happens while Wi-Fi is down: the
+link's own rules handle that. The log gets a `heap_low` line when free memory
+first falls under 10 KiB and `heap_ok` (lowest seen, how long) once it is
+back over 16 KiB, and the restart a `network_watchdog` line saying why. The
+rule is `main/net_watch_rule.h`, tested by `tests/test_net_watch.c`.
+Free memory under 4 KiB, or no free block of 2 KiB (one Wi-Fi frame), counts
+as short: the deaf wall had 6 KiB free in pieces of at most 1.3 KiB.
+
+What keeps it from going deaf in the first place. The test: two phones, one
+on the games page, the other opening the dashboard and tapping Play Pong;
+and a harder one, both phones reloading the whole dashboard three times while
+both play. Before, the first left about 4 KiB free (deaf) and the second went
+deaf every time; now the heap's low point is about 13 KiB in both, with no
+busy replies to speak of and no pause in the game (measured November 16,
+2026):
+
+- the dashboard's settings, stats and Sync replies wait at most 0.3 s for
+  the shared block (none during a game, whose frames hold it), then use the
+  heap if it can spare the room, else answer busy. They waited 5 s on the
+  server task, which also carries the phones' game input: opening the
+  dashboard during a game froze both paddles, and everything queued behind
+  it until the heap ran out;
+- received frames are copied out of the Wi-Fi driver's buffers
+  (`CONFIG_LWIP_L2_TO_L3_COPY`), so requests waiting for the one-at-a-time
+  web server no longer hold all of them;
+- two TCP segments in flight per connection instead of four, and at most two
+  connections waiting to be accepted;
+- the pages and the preview go out gzip-compressed (a third of the bytes),
+  and wait while the heap is short (DASHBOARD.md "Preview routes");
+- a phone's game connection never makes room for a page connection
+  (`httpd_sess_update_lru_counter`), so the dashboard opening no longer
+  closes a player's game;
+- the community feed takes its 8 KiB of working buffers for each step only
+  (with 12 KiB more to spare, else it waits), the spare logo slot (8.7 KiB)
+  goes back to the heap for a game, and the game status is queued by a timer
+  instead of a task of its own: about 4 KiB more free at idle, about 12 KiB
+  more during a game;
+- the game status goes to the phones outside the games lock, so the panel no
+  longer freezes when a send blocks.
+
 Not yet: buttons for these in the owned dashboard (they need the key, so they
 belong behind the planned authenticated settings API); a stock firmware
 without the owner update service needs USB for the first owned install.

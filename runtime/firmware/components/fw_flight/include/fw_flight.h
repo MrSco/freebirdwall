@@ -15,16 +15,16 @@ extern "C" {
 /* One feed row (FUN_42010604). Strings are UTF-8, empty when absent; numbers
  * are NAN when absent. Sizes follow the vendor record. */
 typedef struct {
-    char icao[8], cs[12], reg[20];
-    char fn[12];             /* 4.2: IATA flight number ("NZ7"), for flight_identity */
+    char icao[8], cs[12], reg[16];          /* reg: at most 15 after clean-up */
+    char fn[8];              /* 4.2: IATA flight number ("NZ7"), for flight_identity; longer ones are dropped */
     double alt_b, alt_g, vel, trk, vr;   /* metres, m/s, degrees, m/s */
     bool gnd;
     char sqk[8], orig_icao[8], orig_iata[8], dest_icao[8], dest_iata[8];
     char orig[32], dest[32];
-    char al_code[8], al_paint[8], al_op[8], al_name[36];
-    char al_short[32];       /* 4.2: the airline's short name ("Air NZ"), used when al_name does not fit */
+    char al_code[8], al_paint[8], al_op[8], al_name[24];   /* 4.2 sends up to 35 bytes: a longer name is cut (al_name_cut) and al_short used */
+    char al_short[16];       /* 4.2: the airline's short name ("Air NZ"), used when al_name does not fit */
     bool al_name_cut, al_short_cut;   /* 4.2: cut to fit the record (FUN_42008770) */
-    char ac_type[16], ac_name[32], ac_class[24];   /* ac_type: the ICAO type designator ("B789"); 4.2's
+    char ac_type[16], ac_name[32], ac_class[16];   /* ac_type: the ICAO type designator ("B789"); 4.2's
                                                      * ac_icao fills it when the feed leaves it empty */
     /* trk_info: tracked flights only */
     bool has_trk;

@@ -142,16 +142,17 @@ def test_42(exe, tmp):
     check(r['rc'] == 0 and f['fn'] == 'AA1234' and f['al_short'] == 'American' and f['ac_type'] == 'B738', '4.2: new keys')
     r = run(exe, tmp, 'parse', mp({'f': [{'cs': 'X', 'ac_icao': 'A20N'}, {'ac_type': 'B738', 'ac_icao': 'B38M'}]}))
     check([g['ac_type'] for g in r['flights']] == ['A20N', 'B738'], '4.2: ac_icao fills an empty ac_type only')
-    check(f['al_name'] == 'Air New Zealand Limited Pacific Win' and f['al_name_cut'] and not f['al_short_cut'],
-          '4.2: al_name 35 bytes, cut flag %r' % f['al_name'])
+    check(f['al_name'] == 'Air New Zealand Limited' and f['al_name_cut'] and not f['al_short_cut'],
+          '4.2: al_name cut to 23 bytes with its flag %r' % f['al_name'])
+    check(run(exe, tmp, 'parse', mp({'f': [dict(FULL, fn='AA12345678')]}))['flights'][0]['fn'] == '', '4.2: long fn dropped')
     # a wrongly typed new field is skipped, not fatal
     r = run(exe, tmp, 'parse', mp({'f': [dict(FULL, fn=12, al_short=[1, 2], ac_icao=None)]}))
     f = r['flights'][0]
     check(r['rc'] == 0 and f['fn'] == '' and f['al_short'] == '' and f['cs'] == 'AAL1234', '4.2: soft new fields')
     check(run(exe, tmp, 'parse', mp({'f': [dict(FULL, fn='-12')]}))['flights'][0]['fn'] == '', '4.2: fn starts alnum')
     # a cut al_short drops a broken UTF-8 tail
-    f = run(exe, tmp, 'parse', mp({'f': [{'al_short': 'a' * 30 + 'é'}]}))['flights'][0]
-    check(f['al_short'] == 'a' * 30 and f['al_short_cut'], '4.2: utf-8 tail %r' % f['al_short'])
+    f = run(exe, tmp, 'parse', mp({'f': [{'al_short': 'a' * 14 + 'é'}]}))['flights'][0]
+    check(f['al_short'] == 'a' * 14 and f['al_short_cut'], '4.2: utf-8 tail %r' % f['al_short'])
     wx = {'stn': 'KBOS', 'name': 'Boston Logan', 'raw': 'KBOS 172154Z 35023G36KT 10SM', 'cat': 'IFR', 'cond': 'rain',
           'obs': 1794955000, 'wdir': 350, 'wspd': 23.4, 'wgst': 36, 'vis_m': 16093.4, 'ceil_ft': 7000, 'temp_c': 11,
           'utc_off': -300, 'utc_at': 1795000000, 'utc_next': -240, 'auto': True, 'night': False, 'wvar': False,
@@ -177,8 +178,8 @@ def test_limits(exe, tmp):
     long = {'cs': 'ABCDEFGHIJKLMNOP', 'icao': '1234567890', 'orig': 'x' * 40, 'al_name': 'é' * 20, 'ac_class': 'c' * 30}
     f = run(exe, tmp, 'parse', mp({'f': [long]}))['flights'][0]
     check(f['cs'] == 'ABCDEFGHIJK' and f['icao'] == '1234567' and f['orig'] == 'x' * 31, 'limits: bytewise cuts')
-    check(f['al_name'] == text(('é' * 17).encode()) and f['al_name_cut'],
-          'limits: al_name cut at 35 bytes, broken UTF-8 tail removed (4.2, FUN_42008770)')
+    check(f['al_name'] == text(('é' * 11).encode()) and f['al_name_cut'],
+          'limits: al_name cut to 23 bytes, broken UTF-8 tail removed (4.2, FUN_42008770)')
     check(f['ac_class'] == 'c' * 15, 'limits: ac_class 15 as stock')
     for reg, want in ((' n123ab ', 'N123AB'), ('N12 3', ''), ('A' * 15, 'A' * 15), ('A' * 16, ''), ('G-EZAB', 'G-EZAB'),
                       ('N1_2', ''), ('', '')):

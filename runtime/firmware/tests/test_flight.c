@@ -681,10 +681,10 @@ int main(void){
         CHECK_STR(t, "Air NZ");
         CHECK(fw_flight_text(&st, &g, "heading1", 124, t, sizeof t));
         CHECK_STR(t, "Air New Zealand");                              /* it fits: the full name */
-        strcpy(g.al_name, "JetBlue Airways Corporation");
+        strcpy(g.al_name, "JetBlue Airways Corp");
         g.al_short[0] = 0;
         CHECK(fw_flight_text(&st, &g, "heading1", 86, t, sizeof t));
-        CHECK_STR(t, "JetBlue Airways Corporation");                  /* no short name: it scrolls */
+        CHECK_STR(t, "JetBlue Airways Corp");                         /* no short name: it scrolls */
         strcpy(g.al_name, "JetBlue Airways");
         CHECK(fw_flight_text(&st, &g, "heading1", 86, t, sizeof t));
         CHECK_STR(t, "JetBlue");                                      /* our own shortening */

@@ -26,6 +26,7 @@
 #include "nvs.h"
 #include "esp32_transport.h"
 #include "memory_probe.h"
+#include "games_server.h"
 #include "wifi_link.h"
 #include "settings_store.h"
 #include "community.h"
@@ -54,7 +55,7 @@ static char s_key[80];
 static uint32_t s_store_serial;
 static TaskHandle_t s_task;
 static FwFeedFrame s_frame, s_parse;
-static FwWeather s_parse_wx;            /* 4.2: the response's weather, handed to weather.h */
+static FwWeather *s_parse_wx;           /* 4.2: the response's weather, handed to weather.h (heap, the FlightWall source only) */
 static volatile uint32_t s_serial;
 static char *s_request;                 /* headers + body, built once */
 static size_t s_request_len;
@@ -284,13 +285,14 @@ static int poll_once(int *status, size_t *bytes){
     if (rc != 1) { stage = 3; goto done; }
     if (r.status != 200) { stage = 4; goto done; }
     if (!r.msgpack) { stage = 5; goto done; }                /* JSON answers are not read yet */
-    if (fw_feed_parse(s_body, r.body_len, &s_parse, &s_parse_wx) != FW_FEED_OK) { stage = 6; goto done; }
+    if (!s_parse_wx) s_parse_wx = calloc(1, sizeof *s_parse_wx);
+    if (fw_feed_parse(s_body, r.body_len, &s_parse, s_parse_wx) != FW_FEED_OK) { stage = 6; goto done; }
     xSemaphoreTake(s_lock, portMAX_DELAY);
     memcpy(&s_frame, &s_parse, sizeof s_frame);
     apply_progress(&s_frame);
     ++s_serial;
     xSemaphoreGive(s_lock);
-    fw_weather_store_vendor(&s_parse_wx, s_parse.count != 0);   /* 4.2: the server's weather */
+    if (s_parse_wx) fw_weather_store_vendor(s_parse_wx, s_parse.count != 0);   /* 4.2: the server's weather */
     s_state = FW_FEED_LIVE;
     fw_app_settings_hash(s_parse.config_hash);          /* stock: a new hash means the app changed something */
     /* Stats: the listed flights (at most five; the rest only as a count) and
@@ -402,6 +404,17 @@ static void community_tick(void){
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait));      /* a settings change wakes it early */
 }
 
+/* The 4.2 extras (the weather fetch, the vendor's images) give way to the
+ * phones as the community feed does: never during a game, and only with
+ * their working memory and another 12 KiB to spare (UPDATES.md "Network
+ * watchdog"). They simply wait for a later pass. */
+static bool room_for(size_t bytes){
+    FwMemSnapshot m;
+    if (fw_games_active()) return false;
+    fw_mem_snapshot(&m);
+    return m.free_internal >= bytes + 12288 && m.largest_internal >= bytes + 2048;
+}
+
 /* What the weather fetcher needs (weather.h), from the settings in force. */
 static void weather_want(FwWeatherWant *w){
     memset(w, 0, sizeof *w);
@@ -434,11 +447,11 @@ static void feed_task(void *arg){
             FwWeatherWant want;
             bool images;
             weather_want(&want);
-            fw_weather_step(&want);
+            if (room_for(6144)) fw_weather_step(&want);       /* its JSON documents: about 6 KiB at most */
             xSemaphoreTake(s_lock, portMAX_DELAY);
             images = !s_display.has_display_config || s_display.vendor_images;
             xSemaphoreGive(s_lock);
-            fw_vendor_images_step(images);           /* the vendor's images: a check, or a piece of a download */
+            if (room_for(8192)) fw_vendor_images_step(images); /* a check (about 8 KiB), or a piece of a download */
         }
         if (s_source == FW_SOURCE_COMMUNITY) { community_tick(); continue; }
         t0 = now_ms();
@@ -479,8 +492,10 @@ void fw_feed_start(void){
     fw_weather_store_init();
     s_store_serial = fw_store_serial() - 1;              /* configure on the first pass */
     configure();
-    /* 8 KiB (5.5 KiB used at most on the board): the community source runs TLS (about 4 KiB, measured by the
-     * route probe), streaming JSON and route parsing on this task; re-reading
-     * the settings with cJSON alone left 308 bytes of 4 KiB on the board. */
+    /* 8 KiB: about 7 KiB used at most on the board (1,164 bytes left; 7 KiB
+     * left 144 bytes, after an app settings check):
+     * the community source runs TLS (about 4 KiB, measured by the route
+     * probe), streaming JSON and route parsing on this task; re-reading the
+     * settings with cJSON alone left 308 bytes of 4 KiB on the board. */
     xTaskCreate(feed_task, "fw_feed", 8192, NULL, 4, &s_task);
 }

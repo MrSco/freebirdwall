@@ -75,7 +75,7 @@ typedef struct { const Pt *pts; int n; } Poly;
 
 #define POLY(...) {(const Pt[]){__VA_ARGS__}, (int)(sizeof((const Pt[]){__VA_ARGS__}) / sizeof(Pt))}
 
-static uint32_t grid[32];            /* one bit a pixel, bit x of row y */
+static uint32_t *grid;               /* one bit a pixel, bit x of row y: fw_silhouette's, on its stack */
 #define SET(x, y) (grid[(y)] |= 1u << (x))
 #define LIT(x, y) ((grid[(y)] >> (x)) & 1u)
 
@@ -140,7 +140,7 @@ static void straight(int nose, int tail, int half, int wing_x, int chord, int sp
 }
 
 static void draw_family(int family){
-    memset(grid, 0, sizeof grid);
+    memset(grid, 0, 32 * sizeof *grid);
     switch (family) {
     case FW_FAMILY_AIRLINER_TWIN:
         jet(30, 2, 1, 17, 10, 2, 6);
@@ -193,7 +193,9 @@ static void draw_family(int family){
 
 int fw_silhouette(int family, int side, FwLogo *out){
     int x, y;
+    uint32_t canvas[32];
     if (!out || family <= FW_FAMILY_NONE || family > FW_FAMILY_HELI) return FW_LOGO_ERR_ARGS;
+    grid = canvas;
     if (side < 1) side = 1;
     if (side > FW_LOGO_MAX_SIDE) side = FW_LOGO_MAX_SIDE;
     draw_family(family);

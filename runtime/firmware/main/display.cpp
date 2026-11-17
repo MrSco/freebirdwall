@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <new>
@@ -213,6 +214,21 @@ void logo_ahead(const FwFlight *next){
 }
 
 void load_demo_logo(){ load_logo(logo_key("AAL", nullptr, nullptr)); }
+
+/* A game shows no logos: the spare slot (8.7 KiB) goes back to the heap for
+ * the phones' connections (UPDATES.md "Network watchdog") and is made again
+ * at the next wait. The logo shown next is decoded afresh. */
+void release_spare_logo(){
+    if (!s_logo_b) return;
+    if (s_shown_logo == s_logo_b) {
+        s_shown_logo = &s_logo_a;
+        s_logo_ok = false;
+        s_logo_code[0] = 0;
+    }
+    s_ahead_ready = false;
+    heap_caps_free(s_logo_b);
+    s_logo_b = nullptr;
+}
 
 /* ---------------------------------------------------------------- clock */
 
@@ -469,9 +485,13 @@ void live_settings(){
  * (every 200 ms at most: the time, the age, the technical pages). The icon is
  * the vendor's PNG when the wall's filesystem has it (decoded into the logo
  * slot, which no flight needs meanwhile), else the owned drawing. */
-FwWeather s_wx;
+/* The record and the frame live on the heap only while the weather shows
+ * (never during a game, and they give way when the heap is short). */
+struct WxScreen { FwWeather wx; FwWxFrame frame; };
+WxScreen *s_wxs;
+#define s_wx (s_wxs->wx)
+#define s_wx_frame (s_wxs->frame)
 uint32_t s_wx_serial = UINT32_MAX;
-FwWxFrame s_wx_frame;              /* built each refresh */
 uint32_t s_wx_rows[FW_WX_ROWS];    /* what each row last drew */
 uint8_t s_wx_layout, s_wx_nrow;
 char s_wx_icon[24];
@@ -507,15 +527,29 @@ bool weather_png(const FwSurface *s, const char *name){
     return true;
 }
 
+void weather_release(){
+    std::free(s_wxs);
+    s_wxs = nullptr;
+    s_wx_on = false;
+}
+
 /* Draws the weather when it should show; false for the clock (or the text). */
 bool weather_screen(const FwSurface *s, bool enter){
     const FwFeedDisplay *d = &s_live_display;
     uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
     int64_t now = (int64_t)std::time(nullptr);
-    if (!d->weather_enabled) return false;
+    if (!d->weather_enabled) { if (s_wxs) weather_release(); return false; }
+    if (!s_wxs) {
+        FwMemSnapshot m;
+        fw_mem_snapshot(&m);
+        if (m.free_internal < sizeof(WxScreen) + 12288 || m.largest_internal < sizeof(WxScreen) + 2048) return false;
+        s_wxs = static_cast<WxScreen *>(std::calloc(1, sizeof(WxScreen)));
+        if (!s_wxs) return false;
+        s_wx_on = false;
+    }
     uint32_t serial = fw_weather_store_copy(&s_wx);
     if (serial != s_wx_serial) s_wx_serial = serial;
-    if (!fw_weather_valid(&s_wx) || fw_weather_age(&s_wx, now) > FW_WX_STALE_S) return false;
+    if (!fw_weather_valid(&s_wx) || fw_weather_age(&s_wx, now) > FW_WX_STALE_S) { weather_release(); return false; }
     if (s_wx_on && !enter && !s_wx_icon_retry && now_ms - s_wx_at < 200) return true;
     s_wx_at = now_ms;
     uint32_t h = fnv(s_wx.raw, std::strlen(s_wx.raw), fnv(&s_wx.obs, sizeof s_wx.obs, 0x811c9dc5u));
@@ -555,7 +589,7 @@ void live_empty(const FwSurface *s, bool enter){
     const char *t = s_live_display.loading;
     bool was_weather = s_wx_on;
     if (!std::strcmp(t, "CLOCK") && weather_screen(s, enter)) return;
-    s_wx_on = false;
+    if (s_wxs) weather_release();
     if (was_weather) enter = true;                 /* back to the clock: draw it afresh */
     if (!std::strcmp(t, "CLOCK") && clock_set()) {
         if (enter) clock_enter(s); else clock_refresh(s);
@@ -640,6 +674,7 @@ bool live_step(const FwSurface *s, bool enter){
         s_live_ready = true;
     }
     mode = !s_live_ready || !s_live.count ? LiveEmpty : s_live.tracked ? LiveTracked : LiveRotation;
+    if (mode != LiveEmpty && s_wxs) weather_release();   /* flights again: the weather's memory back */
     if (mode != s_live_mode || enter) {
         s_live_mode = mode;
         if (mode == LiveRotation) {
@@ -1103,6 +1138,7 @@ void animate(void *){
             if (!canvas_ready) {                      /* first frame: the whole panel is written */
                 fw_canvas_init(&canvas, Width, Height, game_buf, game_buf + Width * Height);
                 canvas_ready = true;
+                release_spare_logo();
                 fw_mem_report("game_started", nullptr);
             }
             link_owned = false;
