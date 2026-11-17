@@ -186,6 +186,21 @@ void logo_ahead(const FwFlight *next){
 
 void load_demo_logo(){ load_logo("AAL", nullptr); }
 
+/* A game shows no logos: the spare slot (8.7 KiB) goes back to the heap for
+ * the phones' connections (UPDATES.md "Network watchdog") and is made again
+ * at the next wait. The logo shown next is decoded afresh. */
+void release_spare_logo(){
+    if (!s_logo_b) return;
+    if (s_shown_logo == s_logo_b) {
+        s_shown_logo = &s_logo_a;
+        s_logo_ok = false;
+        s_logo_code[0] = 0;
+    }
+    s_ahead_ready = false;
+    heap_caps_free(s_logo_b);
+    s_logo_b = nullptr;
+}
+
 /* ---------------------------------------------------------------- clock */
 
 /* The owner's stock clock settings as read from the board: US Eastern with
@@ -979,6 +994,7 @@ void animate(void *){
             if (!canvas_ready) {                      /* first frame: the whole panel is written */
                 fw_canvas_init(&canvas, Width, Height, game_buf, game_buf + Width * Height);
                 canvas_ready = true;
+                release_spare_logo();
                 fw_mem_report("game_started", nullptr);
             }
             link_owned = false;

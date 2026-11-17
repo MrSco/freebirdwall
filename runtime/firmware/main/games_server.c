@@ -167,20 +167,20 @@ static void broadcast(void *arg){
     }
 }
 
-static void status_task(void *arg){
+/* Every 100 ms on the esp_timer task (no task of its own: 2.5 KiB of stack
+ * saved for the phones' connections): queue a status broadcast when the game
+ * changed, or a second after the last one. Only queues; the server task sends. */
+static void status_tick(void *arg){
+    bool due;
     (void)arg;
-    for (;;) {
-        bool due;
-        vTaskDelay(pdMS_TO_TICKS(100));
-        xSemaphoreTake(s_lock, portMAX_DELAY);
-        due = s_arcade.serial != s_sent_serial || esp_timer_get_time() - s_sent_at >= STATUS_EVERY_MS * 1000LL;
-        if (due) {
-            s_sent_serial = s_arcade.serial;
-            s_sent_at = esp_timer_get_time();
-        }
-        xSemaphoreGive(s_lock);
-        if (due) httpd_queue_work(s_server, broadcast, NULL);
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    due = s_arcade.serial != s_sent_serial || esp_timer_get_time() - s_sent_at >= STATUS_EVERY_MS * 1000LL;
+    if (due) {
+        s_sent_serial = s_arcade.serial;
+        s_sent_at = esp_timer_get_time();
     }
+    xSemaphoreGive(s_lock);
+    if (due) httpd_queue_work(s_server, broadcast, NULL);
 }
 
 static esp_err_t ws_handler(httpd_req_t *req){
@@ -227,8 +227,8 @@ static esp_err_t ws_handler(httpd_req_t *req){
  * (UPDATES.md "Network watchdog"). Two dashboards loading at once while two
  * phones played got there. A page asked for meanwhile gets a small one that
  * asks again in 2 s; the preview a 503 its loader already retries. */
-#define BUSY_FREE 12288
-#define BUSY_LARGEST 4096
+#define BUSY_FREE 16384                   /* a page send itself takes about 6 KiB (TCP + Wi-Fi buffers) */
+#define BUSY_LARGEST 6144
 static bool busy(void){
     static uint32_t count, noted_at;
     FwMemSnapshot m;
@@ -384,6 +384,7 @@ bool fw_games_start(void){
     c.max_uri_handlers = 32;
     c.stack_size = 6144;                      /* settings edits parse JSON */
     c.lru_purge_enable = true;
+    c.backlog_conn = 2;                       /* connections waiting to be accepted hold their requests' memory */
     if (httpd_start(&s_server, &c) != ESP_OK) {
         s_server = NULL;
         fw_mem_report("games_server_failed", NULL);
@@ -392,7 +393,11 @@ bool fw_games_start(void){
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(s_server, &routes[i]);
     httpd_register_uri_handler(s_server, &ws);
     fw_dashboard_api_register(s_server);
-    xTaskCreate(status_task, "fw_games", 2560, NULL, 4, NULL);
+    {
+        static const esp_timer_create_args_t tick = {.callback = status_tick, .name = "fw_games"};
+        esp_timer_handle_t t;
+        if (esp_timer_create(&tick, &t) == ESP_OK) esp_timer_start_periodic(t, 100000);
+    }
     fw_mem_report("games_server_started", NULL);
     return true;
 }

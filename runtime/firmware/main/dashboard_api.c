@@ -3,6 +3,7 @@
  * "Authorization: Bearer <key>" (the paired browser's key, or the device key
  * the desk uses). Never logs keys, codes or settings values. */
 #include "dashboard_api.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -29,6 +30,7 @@
 #include "community.h"
 #include "fw_assets.h"
 #include "fw_logo.h"
+#include "games_server.h"
 
 #define BODY_MAX 8192
 #define PAIR_START_GAP_MS 5000
@@ -184,46 +186,76 @@ static esp_err_t pair_forget(httpd_req_t *req){
     return reply(req, "200 OK", "{\"signed_in\":false}");
 }
 
+/* ------------------------------------------------------------ work buffers */
+
+/* Where a reply is built: the shared block (big_buffer.h) when it is free
+ * within WORK_WAIT_MS, else the heap when it can spare `bytes` and 16 KiB
+ * more, else NULL (the caller answers busy). The block is often held, by a
+ * game's frames (all game long) or the feed's TLS (seconds), and this runs on
+ * the server task, which also carries the phones' game input: waiting 5 s for
+ * it here froze both paddles whenever a dashboard opened during a game. */
+#define WORK_WAIT_MS 300
+typedef struct { char *b; size_t cap; bool big; } Work;
+
+static bool work_take(Work *w, size_t bytes){
+    FwMemSnapshot m;
+    w->big = true;
+    w->cap = fw_big_bytes;
+    if ((w->b = (char *)fw_big_take(fw_games_active() ? 0 : WORK_WAIT_MS))) return true;
+    w->big = false;
+    w->cap = bytes;
+    fw_mem_snapshot(&m);
+    if (m.free_internal >= bytes + 16384 && m.largest_internal >= bytes + 1024) w->b = malloc(bytes);
+    return w->b != NULL;
+}
+
+/* Wipes the first `wipe` bytes, then gives the buffer back. */
+static void work_give(Work *w, size_t wipe){
+    memset(w->b, 0, wipe < w->cap ? wipe : w->cap);
+    if (w->big) fw_big_give();
+    else free(w->b);
+    w->b = NULL;
+}
+
 /* ------------------------------------------------------------ settings */
 
-/* Built in the shared block (big_buffer.h): settings (up to 4 KiB), airport
- * names (up to 4 KiB) and the reply, instead of ~13 KiB of heap each time the
- * dashboard loads. Wiped before the block is given back. */
+/* Built in a work buffer: settings (up to 4 KiB), airport names (up to 4 KiB)
+ * and the reply, instead of ~13 KiB of heap kept for it. Wiped before it is
+ * given back. */
 static esp_err_t send_settings(httpd_req_t *req, const char *status){
-    enum { PART = 4096 };
+    enum { PART = 4096, NEED = 4 * PART + 256 };     /* the reply: both parts and its frame */
     uint32_t rev = 0;
-    char *b = (char *)fw_big_take(5000), *doc, *aliases, *out;
+    Work w;
+    char *doc, *aliases, *out;
     size_t cap;
     int n;
     esp_err_t e;
-    if (!b) return error(req, "503 Service Unavailable", "busy, try again");
-    doc = b; aliases = b + PART; out = b + 2 * PART;
-    cap = fw_big_bytes - 2 * PART;
+    if (!work_take(&w, NEED)) return error(req, "503 Service Unavailable", "busy, try again");
+    doc = w.b; aliases = w.b + PART; out = w.b + 2 * PART;
+    cap = w.cap - 2 * PART;
     n = fw_store_settings_copy(doc, PART, &rev);
     if (n < 0 || fw_aliases_json(aliases, PART) < 0) {
-        memset(b, 0, 2 * PART);
-        fw_big_give();
+        work_give(&w, 2 * PART);
         return error(req, "500 Internal Server Error", n < 0 ? "settings too large" : "aliases");
     }
     snprintf(out, cap, "{\"revision\":%u,\"settings\":%s,\"aliases\":%s,\"feed\":%d}", (unsigned)rev, n ? doc : "null",
              aliases, (int)fw_feed_state());
     e = reply(req, status, out);
-    memset(b, 0, 2 * PART + strlen(out));
-    fw_big_give();
+    work_give(&w, 2 * PART + strlen(out));
     return e;
 }
 
-/* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Built in the
- * shared block (big_buffer.h) for the moment it takes, not in 8 KiB of heap. */
+/* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Built in a work
+ * buffer for the moment it takes, not in 8 KiB of heap kept for it. */
 static esp_err_t stats_get(httpd_req_t *req){
     size_t cap = 8192, n;          /* at most ~6.6 KB: 48 hours, 31 days of 12 airlines */
-    char *b;
+    Work w;
     esp_err_t e;
     if (!gate(req)) return ESP_OK;
-    if (!(b = (char *)fw_big_take(5000))) return error(req, "503 Service Unavailable", "busy, try again");
-    n = fw_stats_json(b, cap);
-    e = n < cap ? reply(req, "200 OK", b) : error(req, "500 Internal Server Error", "stats too large");
-    fw_big_give();
+    if (!work_take(&w, cap)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_stats_json(w.b, cap);
+    e = n < cap ? reply(req, "200 OK", w.b) : error(req, "500 Internal Server Error", "stats too large");
+    work_give(&w, 0);
     return e;
 }
 
@@ -242,15 +274,15 @@ static esp_err_t log_get(httpd_req_t *req){
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
-/* The owned Sync schedule (SYNC.md "Owned Sync"), built in the shared block. */
+/* The owned Sync schedule (SYNC.md "Owned Sync"), built in a work buffer. */
 static esp_err_t send_sync(httpd_req_t *req){
-    char *b;
+    Work w;
     size_t n;
     esp_err_t e;
-    if (!(b = (char *)fw_big_take(5000))) return error(req, "503 Service Unavailable", "busy, try again");
-    n = fw_sync_store_json(b, 8192);
-    e = n < 8192 ? reply(req, "200 OK", b) : error(req, "500 Internal Server Error", "schedule too large");
-    fw_big_give();
+    if (!work_take(&w, 8192)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_sync_store_json(w.b, 8192);
+    e = n < 8192 ? reply(req, "200 OK", w.b) : error(req, "500 Internal Server Error", "schedule too large");
+    work_give(&w, 0);
     return e;
 }
 

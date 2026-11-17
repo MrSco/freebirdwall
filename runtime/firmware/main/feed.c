@@ -451,8 +451,10 @@ void fw_feed_start(void){
     fw_app_settings_init();
     s_store_serial = fw_store_serial() - 1;              /* configure on the first pass */
     configure();
-    /* 8 KiB (5.5 KiB used at most on the board): the community source runs TLS (about 4 KiB, measured by the
-     * route probe), streaming JSON and route parsing on this task; re-reading
-     * the settings with cJSON alone left 308 bytes of 4 KiB on the board. */
+    /* 8 KiB: about 7 KiB used at most on the board (1,164 bytes left; 7 KiB
+     * left 144 bytes, after an app settings check):
+     * the community source runs TLS (about 4 KiB, measured by the route
+     * probe), streaming JSON and route parsing on this task; re-reading the
+     * settings with cJSON alone left 308 bytes of 4 KiB on the board. */
     xTaskCreate(feed_task, "fw_feed", 8192, NULL, 4, &s_task);
 }

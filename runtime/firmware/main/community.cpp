@@ -65,15 +65,24 @@ struct Target {
     uint32_t sched_ms, pos_ms;              /* next FlightAware times / position request */
 };
 
+/* What a step reads answers with (8 KiB): taken from the heap for each step
+ * and given back after it, so between steps, and all through a game (no
+ * steps), the phones' connections have it. With the heap short the step
+ * waits (UPDATES.md "Network watchdog"). */
+struct Work {
+    StaticJsonDocument<4096> doc;
+    char row[4096];
+};
+
 /* Everything the source keeps, allocated the first time it is chosen (about
- * 25 KiB), so a wall on the vendor feed pays nothing for it. */
+ * 14 KiB, and Work during a step), so a wall on the vendor feed pays nothing
+ * for it. */
 struct State {
     CommunityConfig config;
     CommunityCache cache;
     Batch staging, show;
     PollBudget positions;
-    StaticJsonDocument<4096> doc;
-    char row[4096];
+    Work *work;                             /* only during fw_community_step */
     /* Both pinned roots for both hosts, so either service moving between
      * these CAs keeps working. One PEM buffer, one terminating NUL. */
     char roots[sizeof owner_tls_gts_r4 + sizeof owner_route_root - 1];
@@ -171,10 +180,10 @@ void poll_positions(uint32_t now){
     fw_stats_begin();
     int stage = https_get(rq.host, rq.path, &status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
-        parsed = decode_adsb_stream({&body, body_byte}, s->doc, s->row, sizeof s->row, s->staging, opts);
+        parsed = decode_adsb_stream({&body, body_byte}, s->work->doc, s->work->row, sizeof s->work->row, s->staging, opts);
         return parsed == Result::Ok;
     });
-    s->doc.clear();
+    s->work->doc.clear();
     uint32_t done = now_ms();
     bool ok = !stage && status == 200 && parsed == Result::Ok;
     s->positions.complete(done, stage ? 0 : status, retry);
@@ -203,14 +212,14 @@ void lookup_route(Flight &f){
     int stage = https_get("api.adsbdb.com", path, &status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
         RouteStream in{&body, 0, false};
-        s->doc.clear();
-        bool parsed = !deserializeJson(s->doc, in, DeserializationOption::NestingLimit(12)) && !in.over &&
+        s->work->doc.clear();
+        bool parsed = !deserializeJson(s->work->doc, in, DeserializationOption::NestingLimit(12)) && !in.over &&
                       body.read() == -1;                      /* the whole answer, nothing after it */
-        if (parsed && enrich_route(s->doc.as<JsonVariantConst>(), f.callsign, f)) {
+        if (parsed && enrich_route(s->work->doc.as<JsonVariantConst>(), f.callsign, f)) {
             s->cache.route_result(f);
             found = true;
         }
-        s->doc.clear();
+        s->work->doc.clear();
         return parsed;
     });
     ++s->routes;
@@ -235,9 +244,9 @@ bool route_coords(const char *cs, double c[4], FwAeroFlight *names){
     https_get("api.adsbdb.com", path, &status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
         RouteStream in{&body, 0, false};
-        s->doc.clear();
-        if (!deserializeJson(s->doc, in, DeserializationOption::NestingLimit(12)) && !in.over) {
-            JsonVariantConst r = s->doc["response"]["flightroute"];
+        s->work->doc.clear();
+        if (!deserializeJson(s->work->doc, in, DeserializationOption::NestingLimit(12)) && !in.over) {
+            JsonVariantConst r = s->work->doc["response"]["flightroute"];
             if (r["origin"]["latitude"].is<double>() && r["origin"]["longitude"].is<double>() &&
                 r["destination"]["latitude"].is<double>() && r["destination"]["longitude"].is<double>()) {
                 c[0] = r["origin"]["latitude"]; c[1] = r["origin"]["longitude"];
@@ -256,7 +265,7 @@ bool route_coords(const char *cs, double c[4], FwAeroFlight *names){
                 }
             }
         }
-        s->doc.clear();
+        s->work->doc.clear();
         return true;
     });
     return ok;
@@ -272,10 +281,10 @@ bool callsign_fix(const char *cs, int *stage, unsigned *status){
     std::snprintf(path, sizeof path, "/api/v2/callsign/%s", cs);
     *stage = https_get("opendata.adsb.fi", path, status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
-        parsed = decode_adsb_stream({&body, body_byte}, s->doc, s->row, sizeof s->row, s->staging, opts);
+        parsed = decode_adsb_stream({&body, body_byte}, s->work->doc, s->work->row, sizeof s->work->row, s->staging, opts);
         return parsed == Result::Ok;
     });
-    s->doc.clear();
+    s->work->doc.clear();
     return !*stage && *status == 200 && parsed == Result::Ok && s->staging.count > 0;
 }
 
@@ -487,18 +496,18 @@ void track_lookup(Target &t, uint32_t now){
 }
 
 /* GET https://aeroapi.flightaware.com/aeroapi<path> with the owner's key,
- * read through filter into s->doc. */
+ * read through filter into s->work->doc. */
 int aero_get(const char *path, JsonDocument &filter, unsigned *status, bool *parsed){
     char headers[96];
     uint32_t retry;
     *parsed = false;
     std::snprintf(headers, sizeof headers, "x-apikey: %s\r\n", s->aero_key);
-    s->doc.clear();
+    s->work->doc.clear();
     int stage = fw_https_get(AeroHost, path, headers, reinterpret_cast<const uint8_t *>(owner_aero_root),
                              sizeof owner_aero_root, status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
         RouteStream in{&body, 0, false, 64 * 1024};
-        *parsed = !deserializeJson(s->doc, in, DeserializationOption::Filter(filter),
+        *parsed = !deserializeJson(s->work->doc, in, DeserializationOption::Filter(filter),
                                    DeserializationOption::NestingLimit(12)) && !in.over;
         while (body.read() >= 0) {}
         return true;
@@ -524,8 +533,8 @@ void aero_flights(Target &t, uint32_t now){
     ++s->aero_flights_calls;
     int stage = aero_get(path, filter, &status, &parsed);
     FwAeroFlight fa;
-    bool picked = parsed && fw_aero_pick(s->doc.as<JsonVariantConst>(), (uint32_t)unix_now, &fa);
-    s->doc.clear();
+    bool picked = parsed && fw_aero_pick(s->work->doc.as<JsonVariantConst>(), (uint32_t)unix_now, &fa);
+    s->work->doc.clear();
     if (stage || status != 200 || !parsed) {
         t.sched_ms = now + AeroRetryMs;
     } else if (!picked) {
@@ -556,8 +565,8 @@ void aero_position(Target &t, uint32_t now){
     ++s->aero_position_calls;
     int stage = aero_get(path, filter, &status, &parsed);
     double lat, lon, alt, gs, hd;
-    bool found = parsed && fw_aero_position(s->doc.as<JsonVariantConst>(), &lat, &lon, &alt, &gs, &hd);
-    s->doc.clear();
+    bool found = parsed && fw_aero_position(s->work->doc.as<JsonVariantConst>(), &lat, &lon, &alt, &gs, &hd);
+    s->work->doc.clear();
     if (found) {
         fw_flight_init(&f);
         std::snprintf(f.cs, sizeof f.cs, "%s", t.cs);
@@ -744,6 +753,19 @@ extern "C" uint32_t fw_community_step(FwFeedFrame *frame, bool *good){
     if (!s || !s->config.count) return 10000;
     if (fw_games_active()) return 1000;                     /* the game has the block; flights are not shown */
     if (!fw_esp_wall_clock_valid()) return 2000;            /* certificates need the date */
+    /* The feed gives way to the phones: a step starts only with its 8 KiB
+     * and another 12 KiB to spare, so it never takes the heap's last room in
+     * the middle of a dashboard loading (it did: 2.2 KiB left, UPDATES.md
+     * "Network watchdog"). Flights pause for a moment instead. */
+    FwMemSnapshot m;
+    fw_mem_snapshot(&m);
+    s->work = m.free_internal >= sizeof(Work) + 12288 && m.largest_internal >= sizeof(Work) + 2048
+                  ? new (std::nothrow) Work : nullptr;
+    if (!s->work) {                                         /* the heap is short (phones): later */
+        static uint32_t noted;
+        if (!noted || now_ms() - noted >= 60000) { noted = now_ms() | 1; fw_mem_report("community_step_waits", nullptr); }
+        return 2000;
+    }
     uint32_t now = now_ms();
     if (s->positions.ready(now)) poll_positions(now);
     for (int i = 0; i < RoutesPerStep; ++i) {
@@ -759,6 +781,8 @@ extern "C" uint32_t fw_community_step(FwFeedFrame *frame, bool *good){
     s->cache.display(s->config, s_logos, now_ms(), s->show);
     fw_community_frame(s->show, s_logos, frame);
     track_publish(frame, now_ms());
+    delete s->work;
+    s->work = nullptr;
     *good = s->good;
     now = now_ms();
     uint32_t wait = s->positions.next_ms() - now;

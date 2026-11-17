@@ -87,7 +87,7 @@ firmware's second NVS write, next to saving Wi-Fi credentials in setup mode.
   `Retry-After: 3` and the page asks again: sending it during the probe's TLS
   handshake took the heap's low point from about 21 KB to 11 KB (measured
   October 28, 2026). It answers the same while the heap is short (under
-  12 KiB free or no 4 KiB block), as do the pages (`/`, `/play`) with a small
+  16 KiB free or no 6 KiB block), as do the pages (`/`, `/play`) with a small
   page that reloads after 2 s (UPDATES.md "Network watchdog").
 - `GET /api/flights` (signed in): `{"state":n,"tracked":b,"overflow":n,
   "flights":[...]}`, the feed's last good response, each flight with
