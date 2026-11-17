@@ -94,6 +94,38 @@ planned restart, an upload) starts it again, so a power cycle retries the
 normal start. `CONFIG_FW_SAFE_MODE_TEST` builds a test image that always
 starts in safe mode, to check it on the board (it still rolls back).
 
+**Network watchdog.** A wall can go deaf without crashing: with its memory
+used up, Wi-Fi and lwIP drop every frame, so nothing is ever acknowledged or
+freed, and the panel keeps drawing the clock while the wall answers nothing,
+not even a ping. No task starves, so the task watchdog never fires (this
+happened with two phones on the dashboard and the games page at once). So
+`main/net_watch.c` pings the router every 15 s and, while Wi-Fi is joined,
+restarts the wall (a planned restart: the log is kept, the crash count is
+not touched) when the router answered earlier and has not for 150 s, or when
+free memory stays under 4 KiB for a minute. A router that never answers pings
+is never held against the wall, and nothing happens while Wi-Fi is down: the
+link's own rules handle that. The log gets a `heap_low` line when free memory
+first falls under 10 KiB and `heap_ok` (lowest seen, how long) once it is
+back over 16 KiB, and the restart a `network_watchdog` line saying why. The
+rule is `main/net_watch_rule.h`, tested by `tests/test_net_watch.c`.
+Free memory under 4 KiB, or no free block of 2 KiB (one Wi-Fi frame), counts
+as short: the deaf wall had 6 KiB free in pieces of at most 1.3 KiB.
+
+What kept it from going deaf in the first place (two phones: one on the games
+page, the other opening the dashboard and tapping Play Pong; the low point
+went from about 4 KiB, deaf, to 21–27 KiB, three runs out of three):
+received frames are copied out of the Wi-Fi driver's buffers
+(`CONFIG_LWIP_L2_TO_L3_COPY`), so requests waiting for the one-at-a-time web
+server no longer hold all of them; two TCP segments in flight per connection
+instead of four; the pages and the preview go out gzip-compressed (a third
+of the bytes); the big replies wait while the heap is short (DASHBOARD.md
+"Preview routes"); a phone's game connection never makes room for a page
+connection (`httpd_sess_update_lru_counter`), so the dashboard opening no
+longer closes a player's game; and the game status goes to the phones
+outside the games lock, so the panel no longer freezes when a send blocks.
+Still deaf (and restarted by the watchdog) under a harder test: both phones
+reloading the whole dashboard three times while both play.
+
 Not yet: buttons for these in the owned dashboard (they need the key, so they
 belong behind the planned authenticated settings API); a stock firmware
 without the owner update service needs USB for the first owned install.

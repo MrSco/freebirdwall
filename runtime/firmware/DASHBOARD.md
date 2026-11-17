@@ -80,12 +80,15 @@ firmware's second NVS write, next to saving Wi-Fi credentials in setup mode.
 
 ## Preview routes
 
-- `GET /preview.wasm`: the preview (about 130 KB from flash), `no-cache` with
-  the image's CRC as ETag, so it is downloaded again only after an update.
-  Until the startup route probe has finished (up to a minute after a start),
-  it answers `503` with `Retry-After: 3` and the page asks again: sending it
-  during the probe's TLS handshake took the heap's low point from about 21 KB
-  to 11 KB (measured October 28, 2026).
+- `GET /preview.wasm`: the preview (about 130 KB, sent gzip-compressed as
+  60 KB from flash), `no-cache` with the compressed image's CRC as ETag, so
+  it is downloaded again only after an update. Until the startup route probe
+  has finished (up to a minute after a start), it answers `503` with
+  `Retry-After: 3` and the page asks again: sending it during the probe's TLS
+  handshake took the heap's low point from about 21 KB to 11 KB (measured
+  October 28, 2026). It answers the same while the heap is short (under
+  12 KiB free or no 4 KiB block), as do the pages (`/`, `/play`) with a small
+  page that reloads after 2 s (UPDATES.md "Network watchdog").
 - `GET /api/flights` (signed in): `{"state":n,"tracked":b,"overflow":n,
   "flights":[...]}`, the feed's last good response, each flight with
   `FwFlight`'s fields by name, empty and unknown ones left out (`prog` with the

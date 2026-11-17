@@ -155,6 +155,10 @@ TESTS = {
         'sources': [HERE / 'test_guard.c'],
         'includes': [FIRMWARE / 'main'],
     },
+    'test_net_watch': {
+        'sources': [HERE / 'test_net_watch.c'],
+        'includes': [FIRMWARE / 'main'],
+    },
     'test_link': {
         'sources': [HERE / 'test_link.c', FIRMWARE / 'components/fw_wifi/fw_link.c'],
         'includes': [FIRMWARE / 'components/fw_wifi/include'],
