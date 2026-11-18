@@ -85,6 +85,17 @@ void IRAM_ATTR fw_log_panic(const char *line){
     s_ring.crash.boot = s_ring.boots;
 }
 
+void fw_log_keep(const char *line){
+    fw_log_line(line);
+    if (s_ring.crash.magic != CRASH_MAGIC) return;
+    portENTER_CRITICAL(&s_mux);
+    size_t i = 0;
+    for (; i + 1 < CRASH_LINE && line[i]; ++i) s_ring.crash.line[i] = line[i];
+    s_ring.crash.line[i] = 0;
+    s_ring.crash.boot = s_ring.boots;
+    portEXIT_CRITICAL(&s_mux);
+}
+
 void fw_log_line(const char *line){
     printf("%s\n", line);
     put(line, strlen(line));

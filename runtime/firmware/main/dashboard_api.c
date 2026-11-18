@@ -3,6 +3,9 @@
  * "Authorization: Bearer <key>" (the paired browser's key, or the device key
  * the desk uses). Never logs keys, codes or settings values. */
 #include "dashboard_api.h"
+#include <stdbool.h>
+#include "weather.h"
+#include "vendor_images.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -29,6 +32,7 @@
 #include "community.h"
 #include "fw_assets.h"
 #include "fw_logo.h"
+#include "games_server.h"
 
 #define BODY_MAX 8192
 #define PAIR_START_GAP_MS 5000
@@ -184,46 +188,96 @@ static esp_err_t pair_forget(httpd_req_t *req){
     return reply(req, "200 OK", "{\"signed_in\":false}");
 }
 
+/* ------------------------------------------------------------ work buffers */
+
+/* Where a reply is built: the shared block (big_buffer.h) when it is free
+ * within WORK_WAIT_MS, else the heap when it can spare `bytes` and 16 KiB
+ * more, else NULL (the caller answers busy). The block is often held, by a
+ * game's frames (all game long) or the feed's TLS (seconds), and this runs on
+ * the server task, which also carries the phones' game input: waiting 5 s for
+ * it here froze both paddles whenever a dashboard opened during a game. */
+#define WORK_WAIT_MS 300
+typedef struct { char *b; size_t cap; bool big; } Work;
+
+static bool work_take(Work *w, size_t bytes){
+    FwMemSnapshot m;
+    w->big = true;
+    w->cap = fw_big_bytes;
+    if ((w->b = (char *)fw_big_take(fw_games_active() ? 0 : WORK_WAIT_MS))) return true;
+    w->big = false;
+    w->cap = bytes;
+    fw_mem_snapshot(&m);
+    if (m.free_internal >= bytes + 16384 && m.largest_internal >= bytes + 1024) w->b = malloc(bytes);
+    return w->b != NULL;
+}
+
+/* Wipes the first `wipe` bytes, then gives the buffer back. */
+static void work_give(Work *w, size_t wipe){
+    memset(w->b, 0, wipe < w->cap ? wipe : w->cap);
+    if (w->big) fw_big_give();
+    else free(w->b);
+    w->b = NULL;
+}
+
 /* ------------------------------------------------------------ settings */
 
-/* Built in the shared block (big_buffer.h): settings (up to 4 KiB), airport
- * names (up to 4 KiB) and the reply, instead of ~13 KiB of heap each time the
- * dashboard loads. Wiped before the block is given back. */
+/* Sent in pieces through one 4 KiB work buffer: the settings (up to 4 KiB),
+ * then the airport names (up to 4 KiB) into the same buffer, then the status.
+ * One block of 4 KiB is nearly always to be had; the 16 KiB this used to
+ * need in one piece seldom was, on a wall up for a while, and a save that went
+ * through then answered "busy" (the page kept the old revision, and the next
+ * save was refused as changed elsewhere). Wiped before it is given back. */
 static esp_err_t send_settings(httpd_req_t *req, const char *status){
     enum { PART = 4096 };
     uint32_t rev = 0;
-    char *b = (char *)fw_big_take(5000), *doc, *aliases, *out;
-    size_t cap;
+    Work w;
+    char head[96], tail[400];
     int n;
-    esp_err_t e;
-    if (!b) return error(req, "503 Service Unavailable", "busy, try again");
-    doc = b; aliases = b + PART; out = b + 2 * PART;
-    cap = fw_big_bytes - 2 * PART;
-    n = fw_store_settings_copy(doc, PART, &rev);
-    if (n < 0 || fw_aliases_json(aliases, PART) < 0) {
-        memset(b, 0, 2 * PART);
-        fw_big_give();
-        return error(req, "500 Internal Server Error", n < 0 ? "settings too large" : "aliases");
+    esp_err_t e = ESP_OK;
+    if (!work_take(&w, PART)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_store_settings_copy(w.b, PART, &rev);
+    if (n < 0) { work_give(&w, PART); return error(req, "500 Internal Server Error", "settings too large"); }
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    snprintf(head, sizeof head, "{\"revision\":%u,\"settings\":", (unsigned)rev);
+    if (httpd_resp_send_chunk(req, head, HTTPD_RESP_USE_STRLEN) != ESP_OK ||
+        httpd_resp_send_chunk(req, n ? w.b : "null", HTTPD_RESP_USE_STRLEN) != ESP_OK ||
+        httpd_resp_send_chunk(req, ",\"aliases\":", HTTPD_RESP_USE_STRLEN) != ESP_OK) e = ESP_FAIL;
+    memset(w.b, 0, PART);
+    if (e == ESP_OK) {
+        if (fw_aliases_json(w.b, PART) < 0) snprintf(w.b, PART, "{\"revision\":0,\"aliases\":[]}");
+        if (httpd_resp_send_chunk(req, w.b, HTTPD_RESP_USE_STRLEN) != ESP_OK) e = ESP_FAIL;
     }
-    snprintf(out, cap, "{\"revision\":%u,\"settings\":%s,\"aliases\":%s,\"feed\":%d}", (unsigned)rev, n ? doc : "null",
-             aliases, (int)fw_feed_state());
-    e = reply(req, status, out);
-    memset(b, 0, 2 * PART + strlen(out));
-    fw_big_give();
-    return e;
+    work_give(&w, PART);
+    if (e != ESP_OK) return e;
+    {   /* 4.2: where the weather comes from, and the vendor's images (weather.h, vendor_images.h) */
+        char src[20], stn[8];
+        unsigned wx_status = 0, wx_requests = 0, wx_failures = 0;
+        FwVendorImagesStatus im;
+        fw_weather_status(src, sizeof src, stn, sizeof stn, &wx_status, &wx_requests, &wx_failures);
+        fw_vendor_images_status(&im);
+        snprintf(tail, sizeof tail, ",\"feed\":%d,"
+                 "\"weather\":{\"source\":\"%s\",\"station\":\"%s\",\"status\":%u,\"requests\":%u,\"failures\":%u},"
+                 "\"images\":{\"state\":\"%s\",\"installed\":\"%s\",\"available\":\"%s\",\"error\":\"%s\",\"done\":%u,\"total\":%u}}",
+                 (int)fw_feed_state(), src, stn, wx_status, wx_requests, wx_failures, im.state, im.installed,
+                 im.available, im.error, (unsigned)im.done, (unsigned)im.total);
+    }
+    if (httpd_resp_send_chunk(req, tail, HTTPD_RESP_USE_STRLEN) != ESP_OK) return ESP_FAIL;
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
-/* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Built in the
- * shared block (big_buffer.h) for the moment it takes, not in 8 KiB of heap. */
+/* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Built in a work
+ * buffer for the moment it takes, not in 8 KiB of heap kept for it. */
 static esp_err_t stats_get(httpd_req_t *req){
     size_t cap = 8192, n;          /* at most ~6.6 KB: 48 hours, 31 days of 12 airlines */
-    char *b;
+    Work w;
     esp_err_t e;
     if (!gate(req)) return ESP_OK;
-    if (!(b = (char *)fw_big_take(5000))) return error(req, "503 Service Unavailable", "busy, try again");
-    n = fw_stats_json(b, cap);
-    e = n < cap ? reply(req, "200 OK", b) : error(req, "500 Internal Server Error", "stats too large");
-    fw_big_give();
+    if (!work_take(&w, cap)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_stats_json(w.b, cap);
+    e = n < cap ? reply(req, "200 OK", w.b) : error(req, "500 Internal Server Error", "stats too large");
+    work_give(&w, 0);
     return e;
 }
 
@@ -242,15 +296,15 @@ static esp_err_t log_get(httpd_req_t *req){
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
-/* The owned Sync schedule (SYNC.md "Owned Sync"), built in the shared block. */
+/* The owned Sync schedule (SYNC.md "Owned Sync"), built in a work buffer. */
 static esp_err_t send_sync(httpd_req_t *req){
-    char *b;
+    Work w;
     size_t n;
     esp_err_t e;
-    if (!(b = (char *)fw_big_take(5000))) return error(req, "503 Service Unavailable", "busy, try again");
-    n = fw_sync_store_json(b, 8192);
-    e = n < 8192 ? reply(req, "200 OK", b) : error(req, "500 Internal Server Error", "schedule too large");
-    fw_big_give();
+    if (!work_take(&w, 8192)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_sync_store_json(w.b, 8192);
+    e = n < 8192 ? reply(req, "200 OK", w.b) : error(req, "500 Internal Server Error", "schedule too large");
+    work_give(&w, 0);
     return e;
 }
 
@@ -511,11 +565,12 @@ static void url_decode(char *s){
 
 static bool logo_exists(void *ctx, const char *path){ (void)ctx; return fw_assets_exists(path); }
 
-/* GET /api/logo?al=<airline code>&ac=<aircraft class>: the logo file the wall
- * itself would draw for that flight (LOGOS.md), resolved and read from the
- * asset partition like display.cpp's decode_logo; 404 when there is none. */
+/* GET /api/logo?al=<airline code>&ac=<aircraft class>&t=<ICAO type>: the
+ * picture file the wall itself would draw for that flight (LOGOS.md), resolved
+ * and read from the asset partition like display.cpp's decode_logo; 404 when
+ * there is none, so the wall draws its own silhouette (the preview does too). */
 static esp_err_t logo_get(httpd_req_t *req){
-    char q[96], al[8] = "", ac[32] = "", path_buf[FW_LOGO_PATH_MAX];
+    char q[112], al[8] = "", ac[32] = "", t[8] = "", path_buf[FW_LOGO_PATH_MAX];
     const char *path;
     uint8_t *buf;
     esp_err_t r;
@@ -524,12 +579,14 @@ static esp_err_t logo_get(httpd_req_t *req){
     if (httpd_req_get_url_query_str(req, q, sizeof q) == ESP_OK) {
         if (httpd_query_key_value(q, "al", al, sizeof al) != ESP_OK) al[0] = 0;
         if (httpd_query_key_value(q, "ac", ac, sizeof ac) != ESP_OK) ac[0] = 0;
+        if (httpd_query_key_value(q, "t", t, sizeof t) != ESP_OK) t[0] = 0;
         url_decode(al);
         url_decode(ac);
+        url_decode(t);
     }
     if (!fw_assets_mount_partition()) return error(req, "404 Not Found", "no logos");
-    path = fw_logo_resolve(al, ac, logo_exists, NULL, path_buf, sizeof path_buf);
-    if (!path) return error(req, "404 Not Found", "no logo");
+    path = fw_logo_resolve_42(al, t, ac, logo_exists, NULL, path_buf, sizeof path_buf);
+    if (!path || path[0] == '@') return error(req, "404 Not Found", "no logo");
     n = fw_assets_file_size(path);                  /* most logos are under 1 KB, the largest 2,907 bytes */
     if (n <= 0 || n > 8192) return error(req, "404 Not Found", "no logo");
     if (!(buf = malloc((size_t)n))) return error(req, "503 Service Unavailable", "busy; try again");
@@ -540,6 +597,40 @@ static esp_err_t logo_get(httpd_req_t *req){
     r = httpd_resp_send(req, (const char *)buf, n);
     free(buf);
     return r;
+}
+
+/* GET /api/weather: the weather record the wall holds (weather.h), with the
+ * feed's keys, for the preview; {} when there is none. */
+static esp_err_t weather_get(httpd_req_t *req){
+    static const char *const cats[] = {"", "VFR", "MVFR", "IFR", "LIFR"};
+    static const char *const conds[] = {"", "clear", "partly_cloudy", "cloudy", "overcast", "fog", "rain", "snow", "thunder"};
+    FwWeather w;
+    Json j;
+    if (!gate(req)) return ESP_OK;
+    fw_weather_store_copy(&w);
+    j.at = 0;
+    put(&j, "{\"v\":1");
+    if (fw_weather_valid(&w)) {
+        put_str(&j, "stn", w.stn); put_str(&j, "name", w.name); put_str(&j, "raw", w.raw);
+        put_str(&j, "cat", cats[w.cat <= 4 ? w.cat : 0]); put_str(&j, "cond", conds[w.cond <= 8 ? w.cond : 0]);
+        put(&j, ",\"obs\":%u", (unsigned)w.obs);
+        if (w.utc_at) put(&j, ",\"utc_at\":%u", (unsigned)w.utc_at);
+        if (w.has_wdir) put(&j, ",\"wdir\":%u", (unsigned)w.wdir);
+        if (w.has_wspd) put(&j, ",\"wspd\":%u", (unsigned)w.wspd);
+        if (w.has_wgst) put(&j, ",\"wgst\":%u", (unsigned)w.wgst);
+        if (w.has_vis) put(&j, ",\"vis_m\":%u", (unsigned)w.vis_m);
+        if (w.has_ceil) put(&j, ",\"ceil_ft\":%u", (unsigned)w.ceil_ft);
+        if (w.has_temp) put(&j, ",\"temp_c\":%d", w.temp_c);
+        if (w.has_utc_off) put(&j, ",\"utc_off\":%d", w.utc_off);
+        if (w.has_utc_next) put(&j, ",\"utc_next\":%d", w.utc_next);
+        put_flag(&j, "auto", w.is_auto); put_flag(&j, "night", w.night); put_flag(&j, "wvar", w.wvar);
+        put_flag(&j, "vis_plus", w.vis_plus);
+    }
+    put(&j, "}");
+    if (j.at >= sizeof j.buf) return error(req, "500 Internal Server Error", "weather too long");
+    j.buf[j.at] = 0;
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return reply(req, "200 OK", j.buf);
 }
 
 /* The wall's memory now (memory_probe.h), for the dashboard's Device tab. */
@@ -572,6 +663,7 @@ void fw_dashboard_api_register(httpd_handle_t h){
         {.uri = "/api/tracking", .method = HTTP_PUT, .handler = tracking_put},
         {.uri = "/api/flights", .method = HTTP_GET, .handler = flights_get},
         {.uri = "/api/logo", .method = HTTP_GET, .handler = logo_get},
+        {.uri = "/api/weather", .method = HTTP_GET, .handler = weather_get},
         {.uri = "/api/memory", .method = HTTP_GET, .handler = memory_get},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(h, &routes[i]);

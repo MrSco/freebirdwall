@@ -36,6 +36,7 @@ def build(tmp):
     inc = ['-I%s' % p for p in (FW / 'components/fw_community/include', RUNTIME / 'src', RUNTIME / 'esp32',
                                 FW / 'components/fw_feed/include', FW / 'components/fw_flight/include',
                                 FW / 'components/fw_sync/include', FW / 'components/fw_text/include',
+                                FW / 'components/fw_weather/include', FW / 'components/fw_clock/include',
                                 FW / 'components/fw_screens/include', FW / 'components/fw_logo/include',
                                 FW / 'components/qrcode/include', RUNTIME / 'build/deps/qrcode/src',
                                 FW / 'components/fw_airports/include',

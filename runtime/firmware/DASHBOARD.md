@@ -80,12 +80,15 @@ firmware's second NVS write, next to saving Wi-Fi credentials in setup mode.
 
 ## Preview routes
 
-- `GET /preview.wasm`: the preview (about 130 KB from flash), `no-cache` with
-  the image's CRC as ETag, so it is downloaded again only after an update.
-  Until the startup route probe has finished (up to a minute after a start),
-  it answers `503` with `Retry-After: 3` and the page asks again: sending it
-  during the probe's TLS handshake took the heap's low point from about 21 KB
-  to 11 KB (measured October 28, 2026).
+- `GET /preview.wasm`: the preview (about 130 KB, sent gzip-compressed as
+  60 KB from flash), `no-cache` with the compressed image's CRC as ETag, so
+  it is downloaded again only after an update. Until the startup route probe
+  has finished (up to a minute after a start), it answers `503` with
+  `Retry-After: 3` and the page asks again: sending it during the probe's TLS
+  handshake took the heap's low point from about 21 KB to 11 KB (measured
+  October 28, 2026). It answers the same while the heap is short (under
+  16 KiB free or no 6 KiB block), as do the pages (`/`, `/play`) with a small
+  page that reloads after 2 s (UPDATES.md "Network watchdog").
 - `GET /api/flights` (signed in): `{"state":n,"tracked":b,"overflow":n,
   "flights":[...]}`, the feed's last good response, each flight with
   `FwFlight`'s fields by name, empty and unknown ones left out (`prog` with the
@@ -119,3 +122,13 @@ the wall and `qr_showing` cleared itself after 30 s; an unknown body was
 refused (400); the switch on, on again, then off wrote NVS exactly twice
 (`owned_setting_saved` ×2, the repeat wrote nothing). The `fw_owned`
 namespace now exists on the board with the switch off.
+
+## Customize lines (vendor 4.2 slots)
+
+Display › Customize lines lists every spot of the chosen layout with a menu of
+fields (`display_config.layout_overrides`, FLIGHT-SCREENS.md "Vendor 4.2").
+As in the FlightWall app, the preview is the editor too: with it on
+"Flights", a tap on a line outlines that spot in amber and opens a row of
+fields under the picture (the default marked); a choice shows at once, and
+choosing the default removes the override. The boxes are the mini's own
+(halves split their line at its middle).

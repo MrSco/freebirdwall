@@ -39,6 +39,11 @@ bool fw_tls_write_all(FwTlsClient *,const uint8_t *,size_t);
 int fw_tls_read(FwTlsClient *,uint8_t *,size_t);
 void fw_tls_close(FwTlsClient *);
 bool fw_tls_stats(const FwTlsClient *,FwTlsStats *);
+/* ECDSA P-256 check of a SHA-256 digest: key = 65-byte uncompressed point,
+ * sig = ASN.1 DER. Uses the arena; false (not verified) while a connection
+ * holds it. */
+bool fw_tls_ecdsa_p256_verify(uint8_t *arena,size_t arena_bytes,const uint8_t *point,size_t point_len,
+                              const uint8_t hash[32],const uint8_t *sig,size_t sig_len);
 #ifdef __cplusplus
 }
 #endif

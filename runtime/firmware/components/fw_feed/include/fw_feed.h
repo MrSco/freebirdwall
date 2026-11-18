@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "fw_flight.h"
 #include "fw_sync.h"
+#include "fw_weather.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,8 +39,10 @@ enum {
     FW_FEED_ERR_VERSION = -2,        /* v > 1 */
 };
 
-/* Parses a response body. On any error the frame is left cleared. */
-int fw_feed_parse(const uint8_t *body, size_t len, FwFeedFrame *out);
+/* Parses a response body. On any error the frame is left cleared. weather
+ * (may be NULL) receives 4.2's "weather" record (cleared when there is none;
+ * kept apart so the frame's copies stay small). */
+int fw_feed_parse(const uint8_t *body, size_t len, FwFeedFrame *out, FwWeather *weather);
 
 /* The POST /v2/flights body from the stored configuration JSON (usercfg/json,
  * its request_config): radius_request, geo_request, radius_requests,
@@ -91,6 +94,18 @@ typedef struct {
     uint16_t scroll_px_ms;           /* owned_config.scroll_speed: slow 80, normal 40 (default), fast 20 ms a pixel */
     bool progress_bar;               /* owned_config.progress_bar, default false */
     bool heartbeat_enabled;          /* owned_config.heartbeat_enabled, default true: the blinking corner pixel */
+    /* vendor 4.2 (FEED.md "4.2", FLIGHT-SCREENS.md "4.2") */
+    bool flight_number;              /* flight_identity "iata_flight_number" */
+    uint8_t alt_format, vel_format, vr_format, trk_format;   /* metric_display.*_format, FwFlightSettings */
+    uint8_t slots[FW_SLOTS_MAX];     /* layout_overrides.area.<layout_template>.slots, FwFlightSettings */
+    bool weather_enabled;            /* weather.enabled */
+    uint8_t weather_layout;          /* weather.layout, FwWeatherLayout */
+    uint8_t temp_unit, wind_unit, vis_unit, ceil_unit;   /* metric_display, FwWeatherSettings */
+    char weather_station[6];         /* owned_config.weather_station: "" = the nearest to the first area */
+    bool clock_in_rotation;          /* owned_config.clock_in_rotation: the clock between flights */
+    bool weather_in_rotation;        /* owned_config.weather_in_rotation: the weather between flights (fetched for it) */
+    bool vendor_images;              /* owned_config.vendor_images, default "auto": keep the vendor's images current */
+    uint8_t landed_minutes;          /* owned_config.tracked_landed_minutes: 5, 15 or 30; 0 = the default (15) */
 } FwFeedDisplay;
 
 /* Returns false when the JSON has no display_config. */

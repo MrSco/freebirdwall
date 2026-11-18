@@ -33,7 +33,10 @@ def build(tmp):
         sys.exit('cJSON build failed:\n' + r.stderr[-3000:])
     r = subprocess.run([gcc, '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
                         '-I%s' % (FW / 'components/fw_settings/include'), '-I%s' % CJSON,
+                        '-I%s' % (FW / 'components/fw_flight/include'), '-I%s' % (FW / 'components/fw_text/include'),
                         str(HERE / 'settings_dump.c'), str(FW / 'components/fw_settings/fw_settings.c'), str(obj),
+                        str(FW / 'components/fw_flight/fw_flight.c'), str(FW / 'components/fw_text/fw_text.c'),
+                        str(FW / 'components/fw_text/font5x7.c'), str(FW / 'components/fw_text/vendor_charmap.c'),
                         '-o', str(exe), '-lm'], capture_output=True, text=True)
     if r.returncode:
         sys.exit('build failed:\n' + r.stderr[-3000:])
@@ -127,6 +130,53 @@ def test_display(exe, tmp):
     ]
     for edit, field in cases:
         bad(exe, tmp, {'display_config': edit}, field, 'display: %r' % edit)
+
+
+def test_display_42(exe, tmp):
+    """Vendor 4.2 keys: hold time, flight number, formats, weather, slots."""
+    full = {'flight_display_seconds': 20, 'flight_identity': 'iata_flight_number',
+            'metric_display': {'alt_b_format': 'flight_level', 'vel_format': 'short', 'vr_format': 'short',
+                               'trk_format': 'standard', 'temp_unit': 'fahrenheit', 'wind_unit': 'mph',
+                               'vis_unit': 'auto', 'ceil_unit': 'feet'},
+            'weather': {'enabled': True, 'layout': 'simple'},
+            'layout_overrides': {'area': {'TECHNICAL': {'slots': {'footer1b': 'registration', 'heading3': 'origin'}},
+                                          'NO_LOGO': {'slots': {'heading2b': 'empty'}}}}}
+    d = ok(exe, tmp, {'display_config': full}, 'display 4.2: every setting')
+    for k, v in full.items():
+        check(d['display_config'][k] == v, 'display 4.2: %s stored' % k)
+    cases = [
+        ({'flight_display_seconds': 7}, 'display_config.flight_display_seconds'),
+        ({'flight_display_seconds': '10'}, 'display_config.flight_display_seconds'),
+        ({'flight_identity': 'registration'}, 'display_config.flight_identity'),
+        ({'weather': {'enabled': 1}}, 'display_config.weather.enabled'),
+        ({'weather': {'layout': 'big'}}, 'display_config.weather.layout'),
+        ({'weather': {'station': 'KBOS'}}, 'display_config.weather.station'),
+        ({'metric_display': {'alt_b_format': 'tiny'}}, 'display_config.metric_display.alt_b_format'),
+        ({'metric_display': {'vel_format': 'flight_level'}}, 'display_config.metric_display.vel_format'),
+        ({'metric_display': {'wind_unit': 'beaufort'}}, 'display_config.metric_display.wind_unit'),
+        ({'layout_overrides': {'zone': {}}}, 'display_config.layout_overrides'),
+        ({'layout_overrides': {'area': {'PLUS_SYNC_ACTIVE_MAIN': {'slots': {}}}}},
+         'display_config.layout_overrides.area.PLUS_SYNC_ACTIVE_MAIN'),
+        ({'layout_overrides': {'area': {'DEFAULT': {'slots': {'footer1a': 'altitude'}}}}},
+         'display_config.layout_overrides.area.DEFAULT.slots.footer1a'),
+        ({'layout_overrides': {'area': {'TECHNICAL': {'slots': {'footer1a': 'squawk'}}}}},
+         'display_config.layout_overrides.area.TECHNICAL.slots.footer1a'),
+        ({'layout_overrides': {'area': {'TECHNICAL': {'cells': {}}}}}, 'display_config.layout_overrides.area.TECHNICAL'),
+    ]
+    for edit, field in cases:
+        bad(exe, tmp, {'display_config': edit}, field, 'display 4.2: %r' % edit)
+    d = ok(exe, tmp, {'owned_config': {'weather_station': 'KBOS', 'tracked_landed_minutes': 15, 'vendor_images': 'off'}},
+           'owned 4.2: station, landed time, images')
+    check(d['owned_config'] == {'weather_station': 'KBOS', 'tracked_landed_minutes': 15, 'vendor_images': 'off'},
+          'owned 4.2: stored %r' % d)
+    ok(exe, tmp, {'owned_config': {'weather_station': ''}}, 'owned 4.2: nearest station')
+    bad(exe, tmp, {'owned_config': {'weather_station': 'kbos'}}, 'owned_config.weather_station', 'owned 4.2: station case')
+    bad(exe, tmp, {'owned_config': {'weather_station': 'KBOSX'}}, 'owned_config.weather_station', 'owned 4.2: station length')
+    bad(exe, tmp, {'owned_config': {'tracked_landed_minutes': 10}}, 'owned_config.tracked_landed_minutes', 'owned 4.2: minutes')
+    bad(exe, tmp, {'owned_config': {'vendor_images': 'yes'}}, 'owned_config.vendor_images', 'owned 4.2: images')
+    d = ok(exe, tmp, {'owned_config': {'clock_in_rotation': True, 'weather_in_rotation': False}}, 'owned: breaks')
+    check(d['owned_config'] == {'clock_in_rotation': True, 'weather_in_rotation': False}, 'owned: breaks stored %r' % d)
+    bad(exe, tmp, {'owned_config': {'clock_in_rotation': 1}}, 'owned_config.clock_in_rotation', 'owned: breaks are bools')
 
 
 def test_request(exe, tmp):
@@ -239,7 +289,7 @@ def test_envelope(exe, tmp):
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         exe = build(tmp)
-        for t in (test_display, test_request, test_owned, test_envelope):
+        for t in (test_display, test_display_42, test_request, test_owned, test_envelope):
             t(exe, tmp)
     for f in failures:
         print('FAIL', f)

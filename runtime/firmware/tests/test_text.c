@@ -84,6 +84,11 @@ int main(void){
     CHECK(glyph_of("\xE2\x82\xAC") >= FW_GLYPH_EXTRA_FIRST);  /* € */
     CHECK(glyph_of("\xE2\x9C\x88") >= FW_GLYPH_EXTRA_FIRST);  /* ✈ */
     CHECK(glyph_of("\xC3\xA4") == 0x84);  /* ä stays a font glyph */
+    /* 4.2.4: arrows for the short vertical rate, the weather pager and its dot */
+    CHECK(glyph_of("\xE2\x86\x91") == 0x18 && glyph_of("\xE2\x86\x93") == 0x19);  /* ↑ ↓ */
+    CHECK(glyph_of("\xE2\x96\xB8") == 0x10);                                      /* ▸ */
+    CHECK(glyph_of("\xE2\x97\x8F") >= FW_GLYPH_EXTRA_FIRST);                      /* ● */
+    CHECK(glyph_of("\xE2\x99\xA5") >= FW_GLYPH_EXTRA_FIRST);                      /* ♥, hand-drawn since 4.2 */
     CHECK(glyph_of("\xC4\x9F") == '?');   /* ğ: in neither table */
     CHECK(glyph_of("\xE2\x80\x99") == '?');   /* ’: stock has no punctuation folding */
     CHECK(glyph_of("\xE2\x80\xA6") == '?');   /* … */
@@ -97,7 +102,7 @@ int main(void){
             if (g >= FW_GLYPH_EXTRA_FIRST) ++extra;
             else if (g != '?') { CHECK(g < 256); ++mapped; }
         }
-        CHECK(mapped == 134 && extra == 63);   /* exactly the vendor's two tables */
+        CHECK(mapped == 133 && extra == 68);   /* exactly the vendor's two tables (4.2.4) */
     }
     {   /* an extra glyph draws its rows: ã */
         static const char *const a_tilde[] = {

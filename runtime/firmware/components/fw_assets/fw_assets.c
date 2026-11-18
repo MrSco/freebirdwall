@@ -25,6 +25,7 @@ __attribute__((constructor)) static void make_lock(void){ s_lock = xSemaphoreCre
 static lfs_t s_lfs;
 static struct lfs_config s_cfg;
 static bool s_mounted;
+static bool s_held;                 /* the partition is being rewritten (fw_assets_hold) */
 static FwAssetsRead s_read;
 static void *s_read_ctx;
 static uint8_t s_read_buffer[CACHE], s_prog_buffer[CACHE], s_lookahead[16], s_file_buffer[CACHE];
@@ -90,11 +91,21 @@ bool fw_assets_mount_partition(void){
                                                         ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "spiffs");
     bool ok;
     LOCK();
-    ok = s_mounted || (p && mount(partition_read, (void *)p, p->size));
+    ok = !s_held && (s_mounted || (p && mount(partition_read, (void *)p, p->size)));
     UNLOCK();
     return ok;
 }
 #endif
+
+void fw_assets_hold(bool held){
+    LOCK();
+    if (held && s_mounted) lfs_unmount(&s_lfs);
+    if (held) s_mounted = false;
+    s_held = held;
+    UNLOCK();
+}
+
+bool fw_assets_held(void){ return s_held; }
 
 bool fw_assets_exists(const char *path){
     struct lfs_info info;

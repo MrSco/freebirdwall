@@ -15,13 +15,17 @@ extern "C" {
 /* One feed row (FUN_42010604). Strings are UTF-8, empty when absent; numbers
  * are NAN when absent. Sizes follow the vendor record. */
 typedef struct {
-    char icao[8], cs[12], reg[20];
+    char icao[8], cs[12], reg[16];          /* reg: at most 15 after clean-up */
+    char fn[8];              /* 4.2: IATA flight number ("NZ7"), for flight_identity; longer ones are dropped */
     double alt_b, alt_g, vel, trk, vr;   /* metres, m/s, degrees, m/s */
     bool gnd;
     char sqk[8], orig_icao[8], orig_iata[8], dest_icao[8], dest_iata[8];
     char orig[32], dest[32];
-    char al_code[8], al_paint[8], al_op[8], al_name[24];
-    char ac_type[16], ac_name[32], ac_class[24];
+    char al_code[8], al_paint[8], al_op[8], al_name[24];   /* 4.2 sends up to 35 bytes: a longer name is cut (al_name_cut) and al_short used */
+    char al_short[16];       /* 4.2: the airline's short name ("Air NZ"), used when al_name does not fit */
+    bool al_name_cut, al_short_cut;   /* 4.2: cut to fit the record (FUN_42008770) */
+    char ac_type[16], ac_name[32], ac_class[16];   /* ac_type: the ICAO type designator ("B789"); 4.2's
+                                                     * ac_icao fills it when the feed leaves it empty */
     /* trk_info: tracked flights only */
     bool has_trk;
     char sts;                /* 'C' cancelled, 'D' delayed, 0 none */
@@ -55,6 +59,29 @@ void fw_units_parse(FwUnits *u, const char *alt_b_unit, const char *vel_unit, co
 /* Stock title_text ("registration", "callsign", anything else = airline). */
 FwTitle fw_title_parse(const char *title_text);
 
+/* ------------------------------------------------------------ 4.2 slots (LAYOUTS.md)
+ * "Customize slots": each layout's lines (or halves of lines) as slots that
+ * can show one field. FUN_4200745c (slots), table 0x3c0f5e34 (field names)
+ * and 0x3c0f367c (their templates). */
+#define FW_SLOTS_MAX 9
+enum {
+    FW_FIELD_EMPTY, FW_FIELD_AIRLINE, FW_FIELD_CALLSIGN, FW_FIELD_REGISTRATION, FW_FIELD_AIRCRAFT_TYPE,
+    FW_FIELD_ORIGIN, FW_FIELD_DESTINATION, FW_FIELD_ROUTE, FW_FIELD_ALTITUDE, FW_FIELD_SPEED, FW_FIELD_TRACK,
+    FW_FIELD_VERTICAL_RATE, FW_FIELD_COUNT
+};
+typedef struct {
+    const char *name;     /* "heading2a" */
+    const char *parent;   /* the layout element it sits in */
+    int8_t half;          /* -1 the whole line, 0 left half, 1 right half */
+    uint8_t dflt;         /* FW_FIELD_* shown when not overridden */
+} FwSlot;
+
+/* The slots of a layout (mini DEFAULT 5, NO_LOGO 7, TECHNICAL 7; NULL, 0 for others). */
+const FwSlot *fw_flight_slots(bool mini, const char *layout, int *count);
+int fw_flight_field_parse(const char *name);          /* "altitude" -> FW_FIELD_ALTITUDE; -1 unknown */
+const char *fw_flight_field_name(int field);
+const char *fw_flight_field_template(int field);      /* "{alt_b}"; "" for empty */
+
 typedef struct {
     FwUnits units;
     FwTitle title;
@@ -72,6 +99,16 @@ typedef struct {
      * the ordinary card draws the tracked card's bar along the bottom when
      * the flight's prog is known. */
     bool progress;
+    /* 4.2 (LAYOUTS.md): display_config.flight_identity "iata_flight_number"
+     * makes {cs} the IATA flight number (fn) when the feed has one. */
+    bool flight_number;
+    /* 4.2: metric_display.*_format: 0 stock, 1 "short" (no label; track 225°,
+     * vertical rate ↑1200), 2 "flight_level" (altitude, with feet: FL350). */
+    uint8_t alt_format, vel_format, vr_format, trk_format;
+    /* 4.2: layout_overrides.area.<layout>.slots, per slot of fw_flight_slots():
+     * 0 = the slot's default (so zeroed settings have no overrides), else the
+     * field (FW_FIELD_*) + 1. */
+    uint8_t slots[FW_SLOTS_MAX];
 } FwFlightSettings;
 
 #define FW_FLIGHT_TEXT_MAX 128
@@ -91,6 +128,25 @@ void fw_flight_short_airport(char *s, size_t cap, int level);   /* 1: Intl, Rgnl
 
 /* FUN_42006f50: the built-in template for an element of a layout, or NULL. */
 const char *fw_flight_element_template(bool mini, const char *layout, const char *element);
+
+/* 4.2 (FUN_4200b2fc): the text drawn in a layout element with the owner's
+ * slots: one part (the whole line) or two halves (left, right) when a half of
+ * it is overridden. x and w are the element's; each part gets its own box.
+ * fit: the layout has an override, so a line too long first loses its
+ * Alt:/Spd:/Trk:/Vr: labels (the owned firmware then scrolls what is still
+ * too long, where stock cut it with "..."). Returns 0 when the element shows
+ * nothing. */
+typedef struct {
+    const char *name;    /* the element, or the half's slot name */
+    char tmpl[48];
+    int x, w;
+    bool fit;
+} FwCardPart;
+int fw_flight_card_parts(const FwFlightSettings *s, const char *element, int x, int w, FwCardPart out[2]);
+
+/* The text of one card part (heading1 rules, al_short fitting, label
+ * stripping in fit mode). */
+void fw_flight_part_text(const FwFlightSettings *s, const FwFlight *f, const FwCardPart *p, char *out, size_t cap);
 
 /* ------------------------------------------------------------ tracked */
 

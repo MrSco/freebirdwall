@@ -24,6 +24,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "big_buffer.h"
 #include "esp_http_server.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
@@ -99,6 +100,10 @@ static bool hash_slot(const esp_partition_t *p, uint32_t length, uint8_t out[32]
         if (esp_partition_read(p, at, buf, n) != ESP_OK) return false;
         owner_sha256_update(&h, buf, n);
         at += n;
+        /* Each read stops the other CPU for a moment (flash with the cache
+         * off): a whole image read back to back left its idle task no time,
+         * and the task watchdog restarted the wall mid-update. */
+        if (at % 16384 == 0) vTaskDelay(1);
     }
     owner_sha256_final(&h, out);
     return true;
@@ -267,6 +272,15 @@ static void restart_soon(void){
 
 /* ------------------------------------------------------------ upload */
 
+/* While an image is written, no TLS: every connection's arena is the shared
+ * block, so holding it keeps the feed, weather and lookups out (one already
+ * running ends first). A handshake on one CPU while the other writes flash
+ * crawls (each write stops the CPU) without yielding, and starved that CPU's
+ * idle task past the task watchdog's 10 s: the wall restarted mid-update.
+ * A game holds the block too: then the upload is refused as busy. */
+static bool quiet_take(void){ return fw_big_take(15000) != NULL; }
+static void quiet_give(void){ fw_big_give(); }
+
 static int op_begin(void *u, uint32_t length){
     (void)u;
     if (!current() || s_pending || !app_slot(s_target) || s_target == s_running || length > s_target->size) return -1;
@@ -326,6 +340,7 @@ static esp_err_t put_firmware(httpd_req_t *req){
         req->content_len > s_target->size)
         return error(req, 413, "image size");
     if (s_busy) return error(req, 409, "busy");
+    if (!quiet_take()) return error(req, 409, "busy: a game or a lookup; try again");
     s_busy = true;
     fw_mem_report("update_upload_start", NULL);
     fw_owner_descriptor_key(key);
@@ -344,6 +359,7 @@ static esp_err_t put_firmware(httpd_req_t *req){
     }
     if (rc == OO_OK) rc = owner_ota_finish(&s_upload);
     s_busy = false;
+    quiet_give();
     {
         char extra[48];
         snprintf(extra, sizeof extra, "\"rc\":%d,\"bytes\":%u", rc, (unsigned)s_written);
@@ -412,6 +428,7 @@ static esp_err_t put_spare(httpd_req_t *req){
     if (s_busy) return error(req, 409, "busy");
     if (!recv_full(req, buf, sizeof buf)) return error(req, 400, "upload cut off");
     if (!vendor_image(buf, sizeof buf)) return error(req, 422, "not the vendor firmware");
+    if (!quiet_take()) return error(req, 409, "busy: a game or a lookup; try again");
     s_busy = true;
     fw_mem_report("spare_upload_start", NULL);
     owner_sha256_init(&hs);
@@ -444,6 +461,7 @@ static esp_err_t put_spare(httpd_req_t *req){
     if (s_ota_open) esp_ota_abort(s_ota);
     s_ota_open = false;
     s_busy = false;
+    quiet_give();
     {
         char extra[48];
         snprintf(extra, sizeof extra, "\"ok\":%s,\"bytes\":%u", ok ? "true" : "false", (unsigned)s_written);

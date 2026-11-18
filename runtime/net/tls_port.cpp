@@ -26,4 +26,8 @@ bool fw_tls_stats(const FwTlsClient *p,FwTlsStats *out){
     *out={static_cast<uint32_t>(s.failure),s.tls_error,s.verify_flags,s.arena_bytes,s.peak_payload_bytes,
         s.peak_blocks,s.remaining_payload_bytes,s.remaining_blocks};return true;
 }
+bool fw_tls_ecdsa_p256_verify(uint8_t *arena,size_t arena_bytes,const uint8_t *point,size_t point_len,
+                              const uint8_t hash[32],const uint8_t *sig,size_t sig_len){
+    return flightwall::net::ecdsa_p256_verify(arena,arena_bytes,point,point_len,hash,sig,sig_len);
+}
 }

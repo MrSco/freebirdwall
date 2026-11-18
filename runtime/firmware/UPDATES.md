@@ -94,6 +94,55 @@ planned restart, an upload) starts it again, so a power cycle retries the
 normal start. `CONFIG_FW_SAFE_MODE_TEST` builds a test image that always
 starts in safe mode, to check it on the board (it still rolls back).
 
+**Network watchdog.** A wall can go deaf without crashing: with its memory
+used up, Wi-Fi and lwIP drop every frame, so nothing is ever acknowledged or
+freed, and the panel keeps drawing the clock while the wall answers nothing,
+not even a ping. No task starves, so the task watchdog never fires (this
+happened with two phones on the dashboard and the games page at once). So
+`main/net_watch.c` pings the router every 15 s and, while Wi-Fi is joined,
+restarts the wall (a planned restart: the log is kept, the crash count is
+not touched) when the router answered earlier and has not for 150 s, or when
+free memory stays under 4 KiB for a minute. A router that never answers pings
+is never held against the wall, and nothing happens while Wi-Fi is down: the
+link's own rules handle that. The log gets a `heap_low` line when free memory
+first falls under 10 KiB and `heap_ok` (lowest seen, how long) once it is
+back over 16 KiB, and the restart a `network_watchdog` line saying why. The
+rule is `main/net_watch_rule.h`, tested by `tests/test_net_watch.c`.
+Free memory under 4 KiB, or no free block of 2 KiB (one Wi-Fi frame), counts
+as short: the deaf wall had 6 KiB free in pieces of at most 1.3 KiB.
+
+What keeps it from going deaf in the first place. The test: two phones, one
+on the games page, the other opening the dashboard and tapping Play Pong;
+and a harder one, both phones reloading the whole dashboard three times while
+both play. Before, the first left about 4 KiB free (deaf) and the second went
+deaf every time; now the heap's low point is about 13 KiB in both, with no
+busy replies to speak of and no pause in the game (measured November 16,
+2026):
+
+- the dashboard's settings, stats and Sync replies wait at most 0.3 s for
+  the shared block (none during a game, whose frames hold it), then use the
+  heap if it can spare the room, else answer busy. They waited 5 s on the
+  server task, which also carries the phones' game input: opening the
+  dashboard during a game froze both paddles, and everything queued behind
+  it until the heap ran out;
+- received frames are copied out of the Wi-Fi driver's buffers
+  (`CONFIG_LWIP_L2_TO_L3_COPY`), so requests waiting for the one-at-a-time
+  web server no longer hold all of them;
+- two TCP segments in flight per connection instead of four, and at most two
+  connections waiting to be accepted;
+- the pages and the preview go out gzip-compressed (a third of the bytes),
+  and wait while the heap is short (DASHBOARD.md "Preview routes");
+- a phone's game connection never makes room for a page connection
+  (`httpd_sess_update_lru_counter`), so the dashboard opening no longer
+  closes a player's game;
+- the community feed takes its 8 KiB of working buffers for each step only
+  (with 12 KiB more to spare, else it waits), the spare logo slot (8.7 KiB)
+  goes back to the heap for a game, and the game status is queued by a timer
+  instead of a task of its own: about 4 KiB more free at idle, about 12 KiB
+  more during a game;
+- the game status goes to the phones outside the games lock, so the panel no
+  longer freezes when a send blocks.
+
 Not yet: buttons for these in the owned dashboard (they need the key, so they
 belong behind the planned authenticated settings API); a stock firmware
 without the owner update service needs USB for the first owned install.
@@ -133,3 +182,49 @@ without the owner update service needs USB for the first owned install.
   (`analysis/route-tls/rebuild-check/owner-provider-v1-fb336e55529a/`)
   passes the desk validator, so from a kept owned image stock can also be put
   back by uploading it, if the other slot ever no longer holds it.
+
+## Vendor images
+
+The logos, weather icons and aircraft pictures live in the vendor's LittleFS
+partition (`spiffs`), which the vendor firmware keeps current from its own
+signed filesystem updates (vendor 4.2.4 `FUN_42032714`). A wall that left the
+vendor firmware before 4.1 lacks the weather icons and aircraft pictures, so
+`main/vendor_images.cpp` does the same check (owned_config.vendor_images,
+default `auto`; `off` stops it):
+
+- About two minutes after start, then weekly (30 minutes after a failure):
+  `https://cdn.theflightwall.com/filesystem/mini-v1/manifest.json` (GTS Root
+  R4 pinned). The variant by partition size (`2-5mb-fs` for the mini).
+- The manifest signature, ECDSA P-256 over the vendor's canonical text
+  (`type`, `device_model`, `ota_track`, `storage_security_profile`,
+  `version`, `fs_size_variant`, `url`, `size`, `sha256`,
+  `artifact_signature`, `artifact_signature_url`, `signature_alg`, `key_id`,
+  `rollback_epoch`, one `key=value` line each), against the vendor's key
+  `ota-prod-2026-03` as app 4.2.4 embeds it; checked with the source-built
+  TLS library (`fw_tls_ecdsa_p256_verify`). Then mini-v1, `legacy`,
+  `plain-nvs-v1`, an image under `cdn.theflightwall.com/filesystem/mini-v1/`,
+  no larger than the partition.
+- Installed: `/version.txt` on the partition (the vendor firmware deletes it
+  once read), else what this firmware installed (`fw_owned/fs_ver`). Only a
+  strictly newer version, and never a lower `rollback_epoch`; a wall with no
+  version and no weather icons, or a partition that does not mount, takes it.
+- The image in 128 KiB `Range` requests, each written straight into the
+  partition after erasing its sectors, one request per feed-task pass, so
+  flights keep updating. Stock stages in the other app slot first; the owned
+  firmware never does, since that slot keeps the vendor firmware.
+- Then the partition is read back and hashed: the manifest's SHA-256 and the
+  vendor's signature of it must match; it must mount with the default logo.
+  Only then `fw_owned/fs_ver`, `fs_epoch` are written.
+- While it is rewritten, `fw_assets_hold` keeps the filesystem unmounted: the
+  screens draw the owned silhouettes and weather icons. `fw_owned/fs_dirty`
+  marks a run in progress, so a restart part-way keeps the partition unused
+  and downloads again. The partition is never formatted. Status on the
+  dashboard (Device › Logos and icons) and as `vendor_images` log lines.
+
+## Wi-Fi: protocol fallback (vendor 4.2)
+
+Vendor 4.2.4 joins in 802.11b/g and allows b/g/n after two attempts in a row
+time out ("a Wi-Fi fix for some routers", `FUN_42023c90`, `FUN_42027edc`).
+The owned firmware starts with b/g/n, as walls joining today expect, and two
+timed-out attempts in a row switch between b/g/n and b/g (`main/wifi_link.c`,
+RAM only; logged in `wifi_attempt` as `bg_only`).

@@ -100,6 +100,11 @@ keys. Each key given replaces the stored value; `null` removes it (not
 | `locale` | en es fr de it pt nl pl sv no da fi cs ro hu el tr uk ru |
 | `display_enabled` | bool |
 | `sleep_time` | `start`, `end` "HH:MM", `sleep_brightness_percent` 0..100 |
+| `flight_display_seconds` | 2, 3, 5, 10, 20, 30 (4.2; overrides `flight_display_speed`) |
+| `flight_identity` | `callsign`, `iata_flight_number` (4.2) |
+| `weather` | `enabled` bool, `layout` summary/simple/technical (4.2, WEATHER.md) |
+| `layout_overrides` | `area` → `DEFAULT`/`NO_LOGO`/`TECHNICAL` → `slots` → {slot of that layout: field} (4.2, FLIGHT-SCREENS.md) |
+| `metric_display` (4.2 additions) | `alt_b_format` standard/short/flight_level; `vel_format`, `vr_format`, `trk_format`, `dist_format` standard/short; `temp_unit`, `wind_unit`, `vis_unit` (auto/miles/kilometers), `ceil_unit` |
 
 `request_config`
 
@@ -119,6 +124,10 @@ keys. Each key given replaces the stored value; `null` removes it (not
 | `scroll_speed` | `slow`, `normal` (default) or `fast`: how fast names too long for their line scroll (FLIGHT-SCREENS.md "Long text") |
 | `progress_bar` | bool, default false: a bar along the bottom of each flight card showing how far it is between its airports (FLIGHT-SCREENS.md "Progress bar") |
 | `tracking_source` | `community` (default) or `aeroapi`: where tracked flights' times come from on the community source (FEED.md, "Tracked flights on the community source") |
+| `weather_station` | 3–4 capitals and digits, or `""` (default) for the station nearest the first area (WEATHER.md) |
+| `tracked_landed_minutes` | 5, 15 (default) or 30: how long a landed tracked flight stays on the community source |
+| `clock_in_rotation`, `weather_in_rotation` | bool, default false: the clock and/or the weather between flights, once a pass through them (at least every 20 s), each for a flight's time but at least 6 s, the weather first (WEATHER.md) |
+| `vendor_images` | `auto` (default) or `off`: keep the vendor's logos, weather icons and aircraft pictures current (UPDATES.md "Vendor images") |
 
 A saved change reaches the wall at once: the feed rebuilds its request and
 polls again, and the screens reload their settings. Brightness, display off
@@ -148,7 +157,8 @@ and settings values are never logged.
 | `POST /api/pair/start` | `{"seconds":120}`; 429 if asked again within 5 s |
 | `POST /api/pair/finish` `{"code"}` | `{"key"}`; 403 `{"error":"wrong code","tries_left"}`; 409 when no code is showing |
 | `POST /api/pair/forget` | signs every browser out |
-| `GET /api/settings` | `{"revision","settings","aliases":{"revision","aliases"},"feed"}` |
+| `GET /api/settings` | `{"revision","settings","aliases":{"revision","aliases"},"feed","weather":{"source","station","status","requests","failures"},"images":{"state","installed","available","error","done","total"}}` |
+| `GET /api/weather` | the weather record held, with the feed's keys (`{}` with only `v` when none), for the preview |
 | `PUT /api/settings` | `If-Match: <revision>`, an edit (≤8 KB) → the same as GET; 400 `{"error","field"}`; 409 when the revision is stale; 428 without If-Match |
 | `POST /api/settings/import` | queues **Copy everything from the app** → 202 with the status below |
 | `GET /api/settings/import` | `{"pending","result","checked","changed_at","changed","status"}`: `result` never/ok/network/refused/not_saved, times in unix seconds (0 never since start); `?check=1` asks for a check (the page does on opening) |

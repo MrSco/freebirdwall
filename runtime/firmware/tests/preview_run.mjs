@@ -27,12 +27,13 @@ for (const c of JSON.parse(readFileSync(scenarioPath, 'utf8'))) {
   if (k === 'settings') call(mod.pv_settings, JSON.stringify(v));
   else if (k === 'flights') call(mod.pv_flights, JSON.stringify(v));
   else if (k === 'aliases') call(mod.pv_aliases, JSON.stringify(v));
+  else if (k === 'weather') call(mod.pv_weather, JSON.stringify(v));
   else if (k === 'mode') mod.pv_mode(v);
   else if (k === 'logo') {
-    const png = v[2] ? readFileSync(v[2]) : new Uint8Array(0);
-    const al = str(v[0]), ac = str(v[1]), p = png.length ? put(png) : 0;
-    mod.pv_logo(al, ac, p, png.length);
-    [al, ac, p].forEach((x) => x && mod.pv_free(x));
+    const png = v[3] ? readFileSync(v[3]) : new Uint8Array(0);
+    const al = str(v[0]), ac = str(v[1]), t = str(v[2]), p = png.length ? put(png) : 0;
+    mod.pv_logo(al, ac, t, p, png.length);
+    [al, ac, t, p].forEach((x) => x && mod.pv_free(x));
   } else if (k === 'step') changed += mod.pv_step(v[0] >>> 0, v[1]);
   else if (k === 'dump') {
     writeFileSync(join(outDir, v + '.rgba'), new Uint8Array(mod.memory.buffer, mod.pv_frame(), 128 * 64 * 4));

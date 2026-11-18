@@ -86,6 +86,32 @@ const char *fw_logo_resolve(const char *al_code, const char *ac_class,
                             bool (*exists)(void *ctx, const char *path), void *ctx,
                             char *buf, size_t buf_len);
 
+/* ------------------------------------------------------------ 4.2 silhouettes (LOGOS.md "Silhouettes") */
+
+#define FW_AIRCRAFT_DIR "/images/aircraft/"
+enum {
+    FW_FAMILY_NONE, FW_FAMILY_AIRLINER_TWIN, FW_FAMILY_LIGHT, FW_FAMILY_PROP_TWIN, FW_FAMILY_PROP_QUAD,
+    FW_FAMILY_HELICOPTER_TANDEM, FW_FAMILY_DEFAULT, FW_FAMILY_SMALLJET, FW_FAMILY_HELI
+};
+
+/* The family of an ICAO type designator ("B738" -> airliner twin), from the
+ * vendor's table (FUN_420083f8); FW_FAMILY_NONE when unknown. */
+int fw_aircraft_family(const char *icao_type);
+const char *fw_family_name(int family);       /* "airliner_twin" ... */
+int fw_family_parse(const char *name);
+
+/* Vendor 4.2's lookup (FUN_42009624), with an owned step: the airline's logo
+ * when the filesystem has it; else (owned) the type's own picture,
+ * /images/aircraft/<TYPE>.png, when the filesystem has one (the vendor's
+ * filesystem update carries 348); else "@<family>" from the type, else from
+ * ac_class (Heli, Light, Smalljet), else "@default". */
+const char *fw_logo_resolve_42(const char *al_code, const char *ac_type, const char *ac_class,
+                               bool (*exists)(void *ctx, const char *path), void *ctx, char *buf, size_t buf_len);
+
+/* Owned drawing of a family, white on black, in a square of side (as a
+ * decoded logo, so it draws like one). */
+int fw_silhouette(int family, int side, FwLogo *out);
+
 #ifdef __cplusplus
 }
 #endif

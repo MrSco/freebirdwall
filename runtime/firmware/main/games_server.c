@@ -25,12 +25,13 @@
 #define QR_SHOW_MS 30000                  /* "Show QR on the wall" */
 #define BODY_MAX 128
 
-extern const char games_page_start[] asm("_binary_games_page_html_start");
-extern const char games_page_end[] asm("_binary_games_page_html_end");
-extern const char dashboard_start[] asm("_binary_dashboard_html_start");
-extern const char dashboard_end[] asm("_binary_dashboard_html_end");
-extern const char preview_start[] asm("_binary_preview_wasm_start");
-extern const char preview_end[] asm("_binary_preview_wasm_end");
+extern const char games_page_start[] asm("_binary_games_page_html_gz_start");
+extern const char games_page_end[] asm("_binary_games_page_html_gz_end");
+extern const char dashboard_start[] asm("_binary_dashboard_html_gz_start");
+extern const char dashboard_end[] asm("_binary_dashboard_html_gz_end");
+extern const char preview_start[] asm("_binary_preview_wasm_gz_start");
+extern const char preview_end[] asm("_binary_preview_wasm_gz_end");
+/* the three pages above are gzip-compressed at build time (main/CMakeLists.txt) */
 extern const char icon_start[] asm("_binary_icon_png_start");
 extern const char icon_end[] asm("_binary_icon_png_end");
 
@@ -134,39 +135,52 @@ static void session_closed(void *ctx){
     free(ss);
 }
 
-static void send_status_to(int fd, int slot){
-    char buf[192];
-    httpd_ws_frame_t f;
-    memset(&f, 0, sizeof f);
-    f.type = HTTPD_WS_TYPE_TEXT;
-    f.payload = (uint8_t *)buf;
-    f.len = fw_arcade_status(&s_arcade, slot, buf, sizeof buf);
-    if (f.len < sizeof buf) httpd_ws_send_frame_async(s_server, fd, &f);
-}
-
-/* Runs on the server task (httpd_queue_work), where sending is safe. */
+/* Runs on the server task (httpd_queue_work), where sending is safe. The
+ * status lines are written under the lock and sent after it: a send can block
+ * for the socket's send timeout (5 s) on a phone or network that stopped
+ * answering, and the panel task takes the same lock every frame, so sending
+ * under it froze the panel, heartbeat dot included. */
 static void broadcast(void *arg){
+    struct { int fd; size_t len; char buf[192]; } out[MAX_CLIENTS];
+    int n = 0;
     (void)arg;
     xSemaphoreTake(s_lock, portMAX_DELAY);
     for (int i = 0; i < MAX_CLIENTS; ++i)
-        if (s_clients[i].fd > 0) send_status_to(s_clients[i].fd, s_clients[i].slot);
+        if (s_clients[i].fd > 0) {
+            out[n].fd = s_clients[i].fd;
+            out[n].len = fw_arcade_status(&s_arcade, s_clients[i].slot, out[n].buf, sizeof out[n].buf);
+            if (out[n].len < sizeof out[n].buf) ++n;
+        }
     xSemaphoreGive(s_lock);
+    for (int i = 0; i < n; ++i) {
+        httpd_ws_frame_t f;
+        /* A phone's game connection counts as just used, so when the server
+         * is full (a dashboard opens several connections at once) it closes
+         * an idle page connection, never a player: before, phone B opening
+         * the dashboard closed phone A's game. */
+        httpd_sess_update_lru_counter(s_server, out[i].fd);
+        memset(&f, 0, sizeof f);
+        f.type = HTTPD_WS_TYPE_TEXT;
+        f.payload = (uint8_t *)out[i].buf;
+        f.len = out[i].len;
+        httpd_ws_send_frame_async(s_server, out[i].fd, &f);
+    }
 }
 
-static void status_task(void *arg){
+/* Every 100 ms on the esp_timer task (no task of its own: 2.5 KiB of stack
+ * saved for the phones' connections): queue a status broadcast when the game
+ * changed, or a second after the last one. Only queues; the server task sends. */
+static void status_tick(void *arg){
+    bool due;
     (void)arg;
-    for (;;) {
-        bool due;
-        vTaskDelay(pdMS_TO_TICKS(100));
-        xSemaphoreTake(s_lock, portMAX_DELAY);
-        due = s_arcade.serial != s_sent_serial || esp_timer_get_time() - s_sent_at >= STATUS_EVERY_MS * 1000LL;
-        if (due) {
-            s_sent_serial = s_arcade.serial;
-            s_sent_at = esp_timer_get_time();
-        }
-        xSemaphoreGive(s_lock);
-        if (due) httpd_queue_work(s_server, broadcast, NULL);
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    due = s_arcade.serial != s_sent_serial || esp_timer_get_time() - s_sent_at >= STATUS_EVERY_MS * 1000LL;
+    if (due) {
+        s_sent_serial = s_arcade.serial;
+        s_sent_at = esp_timer_get_time();
     }
+    xSemaphoreGive(s_lock);
+    if (due) httpd_queue_work(s_server, broadcast, NULL);
 }
 
 static esp_err_t ws_handler(httpd_req_t *req){
@@ -206,9 +220,46 @@ static esp_err_t ws_handler(httpd_req_t *req){
     }
 }
 
+/* The big replies (the pages, the preview) wait while the heap is short.
+ * Without PSRAM the wall idles at about 30 KiB free; each connection sending a
+ * page holds a few KiB of TCP and Wi-Fi buffers, and at zero Wi-Fi drops every
+ * frame, so nothing is acknowledged or freed and the wall goes deaf
+ * (UPDATES.md "Network watchdog"). Two dashboards loading at once while two
+ * phones played got there. A page asked for meanwhile gets a small one that
+ * asks again in 2 s; the preview a 503 its loader already retries. */
+#define BUSY_FREE 16384                   /* a page send itself takes about 6 KiB (TCP + Wi-Fi buffers) */
+#define BUSY_LARGEST 6144
+static bool busy(void){
+    static uint32_t count, noted_at;
+    FwMemSnapshot m;
+    fw_mem_snapshot(&m);
+    if (m.free_internal >= BUSY_FREE && m.largest_internal >= BUSY_LARGEST) return false;
+    ++count;
+    if (!noted_at || now_ms() - noted_at >= 10000) {      /* one log line per 10 s at most */
+        char extra[32];
+        noted_at = now_ms();
+        snprintf(extra, sizeof extra, "\"busy_replies\":%u", (unsigned)count);
+        fw_mem_report("games_busy_low_memory", extra);
+    }
+    return true;
+}
+
+static const char busy_page[] =
+    "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width\">"
+    "<meta http-equiv=refresh content=2><body style=\"background:#0b0d12;color:#e8ebf1;"
+    "font:17px system-ui,sans-serif;padding:24px\">The wall is busy for a moment. Trying again...</body>";
+
 static esp_err_t send_page(httpd_req_t *req, const char *start, const char *end){
+    if (busy()) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        httpd_resp_set_hdr(req, "Retry-After", "2");
+        return httpd_resp_send(req, busy_page, sizeof busy_page - 1);
+    }
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     return httpd_resp_send(req, start, end - start);
 }
 
@@ -222,7 +273,7 @@ static esp_err_t icon_handler(httpd_req_t *req){
 }
 
 /* The display preview (tools/build_preview.py, DASHBOARD.md "Preview"), about
- * 130 KB from flash. Its ETag is the image's CRC, so a phone asks again each
+ * 60 KB gzipped from flash. Its ETag is the image's CRC, so a phone asks again each
  * time but downloads it only after a firmware update. */
 static esp_err_t preview_handler(httpd_req_t *req){
     static char etag[16];
@@ -236,12 +287,13 @@ static esp_err_t preview_handler(httpd_req_t *req){
         httpd_resp_set_status(req, "304 Not Modified");
         return httpd_resp_send(req, NULL, 0);
     }
-    if (fw_boot_probe_pending()) {      /* not while the startup TLS probe needs the heap: the page asks again */
+    if (fw_boot_probe_pending() || busy()) {   /* not while the startup TLS probe or the phones need the heap: the page asks again */
         httpd_resp_set_status(req, "503 Service Unavailable");
         httpd_resp_set_hdr(req, "Retry-After", "3");
         return httpd_resp_send(req, NULL, 0);
     }
     httpd_resp_set_type(req, "application/wasm");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     return httpd_resp_send(req, preview_start, preview_end - preview_start);
 }
 
@@ -328,10 +380,11 @@ bool fw_games_start(void){
     fw_arcade_init(&s_arcade, 128, 64, (uint32_t)esp_timer_get_time());
     c.server_port = FW_GAMES_PORT;
     c.ctrl_port = 32772;
-    c.max_open_sockets = MAX_CLIENTS + 1;
+    c.max_open_sockets = MAX_CLIENTS + 2;    /* the phones' game connections stay; the rest for pages */
     c.max_uri_handlers = 32;
     c.stack_size = 6144;                      /* settings edits parse JSON */
     c.lru_purge_enable = true;
+    c.backlog_conn = 2;                       /* connections waiting to be accepted hold their requests' memory */
     if (httpd_start(&s_server, &c) != ESP_OK) {
         s_server = NULL;
         fw_mem_report("games_server_failed", NULL);
@@ -340,7 +393,11 @@ bool fw_games_start(void){
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; ++i) httpd_register_uri_handler(s_server, &routes[i]);
     httpd_register_uri_handler(s_server, &ws);
     fw_dashboard_api_register(s_server);
-    xTaskCreate(status_task, "fw_games", 2560, NULL, 4, NULL);
+    {
+        static const esp_timer_create_args_t tick = {.callback = status_tick, .name = "fw_games"};
+        esp_timer_handle_t t;
+        if (esp_timer_create(&tick, &t) == ESP_OK) esp_timer_start_periodic(t, 100000);
+    }
     fw_mem_report("games_server_started", NULL);
     return true;
 }

@@ -104,7 +104,10 @@ class Handler(BaseHTTPRequestHandler):
         return bool(self.headers.get('Authorization'))
 
     def settings(self):
-        return {'revision': state['revision'], 'settings': SETTINGS, 'aliases': ALIASES, 'feed': 3}
+        return {'revision': state['revision'], 'settings': SETTINGS, 'aliases': ALIASES, 'feed': 3,
+                'weather': {'source': 'aviationweather', 'station': 'KJFK', 'status': 200, 'requests': 4, 'failures': 0},
+                'images': {'state': 'up_to_date', 'installed': '0.1.11', 'available': '0.1.11', 'error': '', 'done': 0,
+                           'total': 0}}
 
     def do_GET(self):
         path = self.path.split('?')[0]
@@ -134,6 +137,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, b'--- boot 1, reset reason 1 ---\nFWSTATE {"board_ok":true}\n', 'text/plain')
         if path == '/api/flights':
             return self.send(200, FLIGHTS)
+        if path == '/api/weather':              # what JFK might report (the wall's own record)
+            return self.send(200, {'v': 1, 'stn': 'KJFK', 'name': 'New York JFK', 'cat': 'MVFR', 'cond': 'cloudy',
+                                   'raw': 'KJFK 171951Z 31012KT 6SM BR BKN018 OVC035 08/04 A3002 RMK AO2',
+                                   'obs': int(time.time()) - 900, 'wdir': 310, 'wspd': 12, 'vis_m': 9656,
+                                   'ceil_ft': 1800, 'temp_c': 8})
         if path == '/api/memory':
             return self.send(200, {'free': 35844, 'min_free': 10984, 'largest': 14848})
         if path == '/api/logo':                 # the airline's own logo only (the wall also has category ones)

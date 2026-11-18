@@ -161,8 +161,17 @@ void fw_screen_flight(const FwSurface *s, const FwFlightSettings *st, const FwFl
         const FwElement *e = &els[i];
         if (e->type == FW_EL_IMAGE) {
             if (logo) fw_logo_draw(s, e->x, e->y, e->w, e->h, logo);
-        } else if (fw_flight_text(st, f, e->name, e->w, text, sizeof text)) {
-            fw_screen_element_text(s, e, text, white);
+        } else {                                  /* 4.2: the owner's slots, a line maybe split in halves */
+            FwCardPart parts[2];
+            int n = fw_flight_card_parts(st, e->name, e->x, e->w, parts), k;
+            for (k = 0; k < n; ++k) {
+                FwElement half = *e;
+                half.name = parts[k].name;
+                half.x = (int16_t)parts[k].x;
+                half.w = (int16_t)parts[k].w;
+                fw_flight_part_text(st, f, &parts[k], text, sizeof text);
+                if (text[0]) fw_screen_element_text(s, &half, text, white);
+            }
         }
     }
     if (st->progress && f->prog == f->prog) fw_screen_progress(s, f->prog);   /* owned: below footer2 */
@@ -481,7 +490,7 @@ static void sample_flight(FwFlight *f){
 }
 
 void fw_screen_flight_card(const FwSurface *s, const FwLogo *logo){
-    static const FwFlightSettings st = {{0, 0, 0, 0, false}, FW_TITLE_AIRLINE, NULL, 0, true, "DEFAULT", NULL, NULL, false};
+    static const FwFlightSettings st = {.title = FW_TITLE_AIRLINE, .mini = true, .layout = "DEFAULT"};
     const FwElement *box = &fw_layout_mini_default[0];
     FwFlight f;
     sample_flight(&f);

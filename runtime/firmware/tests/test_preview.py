@@ -68,7 +68,7 @@ def scenarios():
     logos = []
     for code in ('JBU', 'DAL', 'AAL'):
         p = FIXTURES / (code + '.png')
-        logos.append({'logo': [code, '', str(p) if p.exists() else '']})
+        logos.append({'logo': [code, '', '', str(p) if p.exists() else '']})
     out = {}
 
     def scene(name, *setup, until=12000, dumps=(0, 3100, 6500, 11900)):
@@ -105,6 +105,36 @@ def scenarios():
         clock_is_24hr=True, clock_show_seconds=True), {'mode': 2}, dumps=(0, 2000))
     scene('clock_large_dayfirst', settings(date_format={'order': 'day_month', 'show_weekday': False}), {'mode': 2},
           dumps=(0,))
+    # vendor 4.2: custom slots, short formats, the flight number, a short airline name
+    nz = flight('ANZ7', 'ANZ', 'Air New Zealand', 'SFO', 'AKL', 'San Francisco Intl', 'Auckland Intl', 'Boeing 787-9 Dreamliner',
+                fn='NZ7', al_short='Air NZ', reg='ZK-NZE', vr=4.1, trk=225)
+    scene('slots_technical', settings(layout_template='TECHNICAL', flight_identity='iata_flight_number',
+                                      metric_display={'alt_b_unit': 'feet', 'vel_unit': 'mph', 'vr_unit': 'fpm',
+                                                      'trk_unit': 'degrees', 'dist_unit': 'miles', 'alt_b_format': 'flight_level',
+                                                      'trk_format': 'short', 'vr_format': 'short'},
+                                      layout_overrides={'area': {'TECHNICAL': {'slots': {'footer1b': 'callsign',
+                                                                                         'heading3': 'destination'}}}}),
+          {'flights': {'flights': [nz], 'overflow': 0}}, dumps=(0, 3000))
+    scene('short_airline', settings(), {'flights': {'flights': [nz], 'overflow': 0}}, dumps=(0,))
+    # silhouettes: no airline logo, so the type's family is drawn
+    nologo = [dict(f, al_code='ZZZ', ac_type=t) for f, t in zip(FLIGHTS, ('A320', 'A321', 'B744'))]
+    scene('silhouette', settings(flight_display_speed='fast'), {'flights': {'flights': nologo, 'overflow': 0}},
+          {'logo': ['ZZZ', '', 'A320', '']}, {'logo': ['ZZZ', '', 'A321', '']}, {'logo': ['ZZZ', '', 'B744', '']},
+          dumps=(0, 2100, 4200))
+    # 4.2 weather when the sky is quiet: the three layouts, the wall's record or the sample
+    wx = {'stn': 'KBOS', 'name': 'Boston Logan', 'raw': 'KBOS 261954Z 35023G36KT 1/2SM +TSRA BR FEW008 BKN014CB OVC025 '
+          '11/10 A2990 RMK AO2', 'cat': 'IFR', 'cond': 'thunder', 'obs': NOW - 300, 'wdir': 350, 'wspd': 23, 'wgst': 36,
+          'vis_m': 805, 'ceil_ft': 1400, 'temp_c': 11}
+    for layout in ('summary', 'simple', 'technical'):
+        scene('weather_' + layout, settings(loading_template='CLOCK', weather={'enabled': True, 'layout': layout}),
+              {'flights': {'flights': []}}, {'weather': wx}, dumps=(0, 4500))
+    scene('weather_sample', settings(loading_template='CLOCK', weather={'enabled': True, 'layout': 'simple'},
+                                     metric_display={'temp_unit': 'fahrenheit'}), {'flights': {'flights': []}},
+          {'weather': {}}, dumps=(0,))
+    # owned: the weather, then the clock, between flights (once a pass, at least every 20 s, 6 s each)
+    scene('breaks', settings(flight_display_speed='fast', weather={'enabled': False},
+                             owned={'clock_in_rotation': True, 'weather_in_rotation': True}), fl, {'weather': wx},
+          until=34000, dumps=(1000, 20500, 26500, 33000))
     # a setting changed in the middle: the preview starts the card over, like the wall
     mid = [settings(), fl] + logos
     run_steps(mid, 0, 2001)

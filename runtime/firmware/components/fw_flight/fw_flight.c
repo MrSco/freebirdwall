@@ -110,17 +110,22 @@ static void cleaned_or_na(const char *s, char *out, size_t cap){
     else copy(out, cap, NA);
 }
 
-static void callsign(const FwFlight *f, char *out, size_t cap){ cleaned_or_na(f->cs, out, cap); }
+/* {cs}: the IATA flight number with flight_identity (4.2, FUN_42009bc8). */
+static void callsign(const FwFlightSettings *s, const FwFlight *f, char *out, size_t cap){
+    if (s && s->flight_number && *f->fn) fw_flight_clean(f->fn, out, cap);
+    else cleaned_or_na(f->cs, out, cap);
+}
 
+/* {reg}: empty -> the raw callsign, never the flight number (FUN_42009ba8). */
 static void registration(const FwFlight *f, char *out, size_t cap){
     if (*f->reg) copy(out, cap, f->reg);
-    else callsign(f, out, cap);
+    else cleaned_or_na(f->cs, out, cap);
 }
 
 static void title(const FwFlightSettings *s, const FwFlight *f, char *out, size_t cap){
     const char *pick;
     if (s->title == FW_TITLE_REGISTRATION) { registration(f, out, cap); return; }
-    if (s->title == FW_TITLE_CALLSIGN) { callsign(f, out, cap); return; }
+    if (s->title == FW_TITLE_CALLSIGN) { callsign(s, f, out, cap); return; }
     pick = *f->al_name ? f->al_name : *f->cs ? f->cs : *f->al_op ? f->al_op : *f->al_paint ? f->al_paint
          : f->al_code;
     cleaned_or_na(pick, out, cap);
@@ -156,6 +161,17 @@ static void origin(const FwFlightSettings *s, const FwFlight *f, char *out, size
     else copy(out, cap, unknown(s, "Unknown origin"));
 }
 
+/* 4.2 {orig_name}, {dest_name}: the names without the anchor rule (FUN_42009eb8, FUN_42009f84). */
+static void origin_name(const FwFlightSettings *s, const FwFlight *f, char *out, size_t cap){
+    if (*f->orig) fw_flight_clean(f->orig, out, cap);
+    else copy(out, cap, unknown(s, "Unknown origin"));
+}
+
+static void destination_name(const FwFlightSettings *s, const FwFlight *f, char *out, size_t cap){
+    if (*f->dest) fw_flight_clean(f->dest, out, cap);
+    else copy(out, cap, unknown(s, "Unknown destination"));
+}
+
 static void destination(const FwFlightSettings *s, const FwFlight *f, char *out, size_t cap){
     if (anchored(s, f->dest_icao) || anchored(s, f->dest_iata)) {
         if (*f->orig) fw_flight_clean(f->orig, out, cap);
@@ -181,6 +197,11 @@ static void compact(long n, const char *unit, char *out, size_t cap){
 static void altitude(const FwFlightSettings *s, double v, char *out, size_t cap){
     float f = (float)v;
     if (invalid(f)) { copy(out, cap, NA); return; }
+    if (s->alt_format == 2 && s->units.alt == FW_ALT_FEET) {      /* 4.2 flight level */
+        long fl = lround((double)f * K_FEET / 100.0);
+        snprintf(out, cap < 16 ? cap : 16, "FL%03ld", fl < 0 ? 0L : fl);
+        return;
+    }
     switch (s->units.alt) {
     case FW_ALT_KILOMETERS: compact(lround((double)f / 1000.0), "km", out, cap); break;
     case FW_ALT_NAUTICAL_MILES: compact(lround((double)f / 1852.0), "NM", out, cap); break;
@@ -207,6 +228,14 @@ static void vertical(const FwFlightSettings *s, double v, char *out, size_t cap)
     long n;
     const char *unit;
     if (invalid(f)) { copy(out, cap, NA); return; }
+    if (s->vr_format) {                                           /* 4.2 short: an arrow, no unit (FUN_42008894) */
+        double k = s->units.vr == FW_VR_FPS ? K_FEET : s->units.vr == FW_VR_MPS ? 1.0 : s->units.vr == FW_VR_FPM ? K_FPM
+                 : s->units.vr == FW_VR_MPH ? K_MPH : K_KPH;
+        n = lroundf(fabsf((float)((double)f * k)));
+        if (n == 0 || ((double)f >= -0.1 && (double)f <= 0.1)) copy(out, cap, "0");
+        else snprintf(out, cap, "%s%ld", (double)f > 0 ? "\xE2\x86\x91" : "\xE2\x86\x93", n);
+        return;
+    }
     switch (s->units.vr) {
     case FW_VR_FPS: n = lroundf(fabsf((float)((double)f * K_FEET))); unit = "ft/s"; break;
     case FW_VR_MPS: n = lroundf(fabsf(f)); unit = "m/s"; break;
@@ -229,6 +258,7 @@ static void heading(const FwFlightSettings *s, double v, char *out, size_t cap){
     r = lroundf(f);
     deg = (unsigned)(r % 360 + 360) % 360u;
     if (s->units.trk_cardinal) copy(out, cap, names[((deg + 11) / 22) & 15]);
+    else if (s->trk_format) snprintf(out, cap < 16 ? cap : 16, "%u\xC2\xB0", deg);   /* 4.2 short: 225 degrees */
     else snprintf(out, cap < 16 ? cap : 16, "%udeg", deg);
 }
 
@@ -247,7 +277,10 @@ static void distance(const FwFlightSettings *s, double v, char *out, size_t cap)
     case FW_DIST_NAUTICAL_MILES: small_distance(f / 1852.0f, "NM", out, cap); break;
     case FW_DIST_KILOMETERS: small_distance(f / 1000.0f, "km", out, cap); break;
     case FW_DIST_FEET: snprintf(out, cap, "%ldft", lround((double)f * K_FEET)); break;
-    default: snprintf(out, cap, "%ldm", lroundf(f)); break;
+    default:                                    /* 4.2: kilometres from 1000 m (FUN_42008b64) */
+        if (fabsf(f) >= 1000.0f) small_distance(f / 1000.0f, "km", out, cap);
+        else snprintf(out, cap, "%ldm", lroundf(f));
+        break;
     }
 }
 
@@ -345,6 +378,12 @@ static void expand(const FwFlightSettings *s, const FwFlight *f, const char *tmp
     if (!cap) return;
     if (!tmpl) { out[0] = 0; return; }
     copy(out, cap, tmpl);
+    if (s) {                                     /* 4.2: a field with a format loses its label (FUN_420098e0) */
+        if (s->alt_format) { replace_all(out, cap, "Alt: ", ""); replace_all(out, cap, "Alt:", ""); }
+        if (s->vel_format) { replace_all(out, cap, "Spd: ", ""); replace_all(out, cap, "Spd:", ""); }
+        if (s->trk_format) { replace_all(out, cap, "Trk: ", ""); replace_all(out, cap, "Trk:", ""); }
+        if (s->vr_format) { replace_all(out, cap, "Vr: ", ""); replace_all(out, cap, "Vr:", ""); }
+    }
 #define SUB(tok) replace_all(out, cap, tok, v)
     /* owned airport aliases: the substituted text may be swapped first */
 #define ALIAS(tok) do { char a_[FW_FLIGHT_TEXT_MAX]; \
@@ -356,11 +395,13 @@ static void expand(const FwFlightSettings *s, const FwFlight *f, const char *tmp
     title(s, f, v, sizeof v);
     if (level && s->title == FW_TITLE_AIRLINE && *f->al_name) fw_flight_short_airline(v, sizeof v);
     SUB("{al_name}");
-    callsign(f, v, sizeof v);                        SUB("{cs}");
+    callsign(s, f, v, sizeof v);                     SUB("{cs}");
     registration(f, v, sizeof v);                    SUB("{reg}");
     cleaned_or_na(f->ac_name, v, sizeof v);          SUB("{ac_name}");
     origin(s, f, v, sizeof v);                       ALIAS_SHORT("{orig}"); SUB("{orig}");
     destination(s, f, v, sizeof v);                  ALIAS_SHORT("{dest}"); SUB("{dest}");
+    if (strstr(out, "{orig_name}")) { origin_name(s, f, v, sizeof v); ALIAS_SHORT("{orig}"); SUB("{orig_name}"); }
+    if (strstr(out, "{dest_name}")) { destination_name(s, f, v, sizeof v); ALIAS_SHORT("{dest}"); SUB("{dest_name}"); }
     copy(v, sizeof v, *f->orig_iata ? f->orig_iata : NA); ALIAS("{orig_iata}"); SUB("{orig_iata}");
     copy(v, sizeof v, *f->dest_iata ? f->dest_iata : NA); ALIAS("{dest_iata}"); SUB("{dest_iata}");
     altitude(s, f->alt_b, v, sizeof v);              SUB("{alt_b}");
@@ -442,7 +483,7 @@ const char *fw_flight_element_template(bool mini, const char *layout, const char
 static void fit_heading1(const FwFlightSettings *s, const FwFlight *f, int element_w, char *out, size_t cap){
     if (s->title == FW_TITLE_REGISTRATION && *f->reg && strcmp(out, f->reg) == 0 &&
         element_w < code_points(out) * 6)
-        callsign(f, out, cap);
+        callsign(s, f, out, cap);
 }
 
 static void shorten(char *out, size_t cap, size_t keep_bytes){
@@ -451,14 +492,151 @@ static void shorten(char *out, size_t cap, size_t keep_bytes){
     copy(out, cap, tmp);
 }
 
+/* ------------------------------------------------------------ 4.2 slots */
+
+static const char *const FIELD_NAMES[FW_FIELD_COUNT] = {
+    "empty", "airline", "callsign", "registration", "aircraft_type", "origin", "destination", "route", "altitude",
+    "speed", "track", "vertical_rate",
+};
+static const char *const FIELD_TEMPLATES[FW_FIELD_COUNT] = {
+    "", "{al_name}", "{cs}", "{reg}", "{ac_name}", "{orig_name}", "{dest_name}", "{orig_iata}-{dest_iata}", "{alt_b}",
+    "{vel}", "{trk}", "{vr}",
+};
+
+int fw_flight_field_parse(const char *name){
+    int i;
+    for (i = 0; i < FW_FIELD_COUNT; ++i)
+        if (eq(name, FIELD_NAMES[i])) return i;
+    return -1;
+}
+const char *fw_flight_field_name(int field){ return field >= 0 && field < FW_FIELD_COUNT ? FIELD_NAMES[field] : NULL; }
+const char *fw_flight_field_template(int field){
+    return field >= 0 && field < FW_FIELD_COUNT ? FIELD_TEMPLATES[field] : NULL;
+}
+
+static const FwSlot SLOTS_DEFAULT[] = {
+    {"heading1", "heading1", -1, FW_FIELD_AIRLINE}, {"heading2", "heading2", -1, FW_FIELD_ROUTE},
+    {"heading3", "heading3", -1, FW_FIELD_AIRCRAFT_TYPE}, {"footer1", "footer1", -1, FW_FIELD_ORIGIN},
+    {"footer2", "footer2", -1, FW_FIELD_DESTINATION},
+};
+static const FwSlot SLOTS_NO_LOGO[] = {
+    {"heading1", "heading1", -1, FW_FIELD_AIRLINE}, {"heading2a", "heading2", 0, FW_FIELD_ROUTE},
+    {"heading2b", "heading2", 1, FW_FIELD_AIRCRAFT_TYPE}, {"heading3", "heading3", -1, FW_FIELD_ORIGIN},
+    {"footer1", "footer1", -1, FW_FIELD_DESTINATION}, {"footer2a", "footer2", 0, FW_FIELD_ALTITUDE},
+    {"footer2b", "footer2", 1, FW_FIELD_SPEED},
+};
+static const FwSlot SLOTS_TECHNICAL[] = {
+    {"heading1", "heading1", -1, FW_FIELD_AIRLINE}, {"heading2", "heading2", -1, FW_FIELD_ROUTE},
+    {"heading3", "heading3", -1, FW_FIELD_AIRCRAFT_TYPE}, {"footer1a", "footer1", 0, FW_FIELD_ALTITUDE},
+    {"footer1b", "footer1", 1, FW_FIELD_SPEED}, {"footer2a", "footer2", 0, FW_FIELD_TRACK},
+    {"footer2b", "footer2", 1, FW_FIELD_VERTICAL_RATE},
+};
+
+const FwSlot *fw_flight_slots(bool mini, const char *layout, int *count){
+    *count = 0;
+    if (!mini) return NULL;                       /* widescreen: not built */
+    if (eq(layout, "DEFAULT")) { *count = 5; return SLOTS_DEFAULT; }
+    if (eq(layout, "NO_LOGO")) { *count = 7; return SLOTS_NO_LOGO; }
+    if (eq(layout, "TECHNICAL")) { *count = 7; return SLOTS_TECHNICAL; }
+    return NULL;
+}
+
+/* The slot's field when overridden with something other than its default
+ * (FUN_4200aa84: choosing the default is no override), else -1. */
+static int slot_override(const FwFlightSettings *s, const FwSlot *slot, int i){
+    int v = i < FW_SLOTS_MAX ? s->slots[i] : 0;
+    if (!v || v - 1 >= FW_FIELD_COUNT || v - 1 == slot->dflt) return -1;
+    return v - 1;
+}
+
+int fw_flight_card_parts(const FwFlightSettings *s, const char *element, int x, int w, FwCardPart out[2]){
+    int count, i, n = 0, half_override = 0, full = -1;
+    bool fit = false;
+    const FwSlot *slots = fw_flight_slots(s->mini, s->layout, &count);
+    const char *stock = fw_flight_element_template(s->mini, s->layout, element);
+    for (i = 0; i < count; ++i) {
+        int o = slot_override(s, &slots[i], i);
+        if (o < 0) continue;
+        fit = true;
+        if (!eq(slots[i].parent, element)) continue;
+        if (slots[i].half < 0) full = o;
+        else ++half_override;
+    }
+    if (half_override) {                          /* split: each half its override or its default */
+        for (i = 0; i < count && n < 2; ++i) {
+            int o;
+            if (!eq(slots[i].parent, element) || slots[i].half < 0) continue;
+            o = slot_override(s, &slots[i], i);
+            out[n].name = slots[i].name;
+            copy(out[n].tmpl, sizeof out[n].tmpl, FIELD_TEMPLATES[o >= 0 ? o : slots[i].dflt]);
+            out[n].w = w / 2;
+            out[n].x = slots[i].half ? x + w / 2 : x;
+            out[n].fit = fit;
+            ++n;
+        }
+        return n;
+    }
+    if (full < 0 && !stock) return 0;
+    out[0].name = element;
+    copy(out[0].tmpl, sizeof out[0].tmpl, full >= 0 ? FIELD_TEMPLATES[full] : stock);
+    out[0].x = x;
+    out[0].w = w;
+    out[0].fit = fit;
+    return 1;
+}
+
+/* 4.2 (FUN_42009d70): an element showing just the airline takes the short
+ * name when the full one does not fit. Owned: our own shortening ("JetBlue
+ * Airways" -> "JetBlue") comes next, and what still does not fit scrolls
+ * (stock cuts it with "..."). */
+static bool airline_fit(const FwFlightSettings *s, const FwFlight *f, int w, char *out, size_t cap){
+    char name[FW_FLIGHT_TEXT_MAX], shorter[FW_FLIGHT_TEXT_MAX];
+    if (s->title != FW_TITLE_AIRLINE || !*f->al_name || w <= 0) return false;
+    fw_flight_clean(f->al_name, name, sizeof name);
+    if (!f->al_name_cut && fits(name, w)) { copy(out, cap, name); return true; }
+    if (*f->al_short) {
+        fw_flight_clean(f->al_short, shorter, sizeof shorter);
+        if (fits(shorter, w)) { copy(out, cap, shorter); return true; }
+    }
+    copy(shorter, sizeof shorter, name);
+    fw_flight_short_airline(shorter, sizeof shorter);
+    if (fits(shorter, w) || !*f->al_short) { copy(out, cap, shorter); return true; }
+    fw_flight_clean(f->al_short, out, cap);
+    return true;
+}
+
+static void strip_labels(char *t, size_t cap){
+    static const char *const labels[] = {"Alt: ", "Alt:", "Spd: ", "Spd:", "Trk: ", "Trk:", "Vr: ", "Vr:", NULL};
+    int i;
+    for (i = 0; labels[i]; ++i) replace_all(t, cap, labels[i], "");
+}
+
+void fw_flight_part_text(const FwFlightSettings *s, const FwFlight *f, const FwCardPart *p, char *out, size_t cap){
+    if (!cap) return;
+    if (!*p->tmpl) { out[0] = 0; return; }
+    if (eq(p->tmpl, "{al_name}") && airline_fit(s, f, p->w, out, cap)) return;
+    expand_fit(s, f, p->tmpl, p->w, out, cap);
+    if (p->fit && !fits(out, p->w)) {             /* FUN_4200ad28: drop the labels, then (owned) scroll */
+        char t[48];
+        copy(t, sizeof t, p->tmpl);
+        strip_labels(t, sizeof t);
+        if (strcmp(t, p->tmpl)) expand_fit(s, f, t, p->w, out, cap);
+    }
+    if (eq(p->name, "heading1")) fit_heading1(s, f, p->w, out, cap);
+    if (!s->mini && strlen(out) > 32 && eq(p->name, "footer1")) shorten(out, cap, 29);   /* 4.2: footer1 only */
+}
+
 bool fw_flight_text(const FwFlightSettings *s, const FwFlight *f, const char *element, int element_w,
                     char *out, size_t cap){
+    FwCardPart p;
     const char *tmpl = fw_flight_element_template(s->mini, s->layout, element);
     if (!tmpl || !cap) return false;
-    expand_fit(s, f, tmpl, element_w, out, cap);
-    if (eq(element, "heading1")) fit_heading1(s, f, element_w, out, cap);
-    if (!s->mini && strlen(out) > 32 && (eq(element, "footer1") || eq(element, "heading1")))
-        shorten(out, cap, 29);
+    p.name = element;
+    copy(p.tmpl, sizeof p.tmpl, tmpl);
+    p.x = 0;
+    p.w = element_w;
+    p.fit = false;
+    fw_flight_part_text(s, f, &p, out, cap);
     return true;
 }
 

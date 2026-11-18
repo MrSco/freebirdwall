@@ -252,6 +252,16 @@ bool fw_feed_display(const char *config_json, FwFeedDisplay *out){
         out->scroll_px_ms = sp && !strcmp(sp, "slow") ? 80 : sp && !strcmp(sp, "fast") ? 20 : 40;
         out->progress_bar = cJSON_IsTrue(item(item(root, "owned_config"), "progress_bar"));
         out->heartbeat_enabled = flag(item(root, "owned_config"), "heartbeat_enabled", true);
+        copy(out->weather_station, sizeof out->weather_station, str(item(root, "owned_config"), "weather_station"), "");
+        {
+            const char *vi = str(item(root, "owned_config"), "vendor_images");
+            const cJSON *lm = item(item(root, "owned_config"), "tracked_landed_minutes");
+            out->vendor_images = !(vi && !strcmp(vi, "off"));
+            out->clock_in_rotation = cJSON_IsTrue(item(item(root, "owned_config"), "clock_in_rotation"));
+            out->weather_in_rotation = cJSON_IsTrue(item(item(root, "owned_config"), "weather_in_rotation"));
+            if (cJSON_IsNumber(lm) && (lm->valuedouble == 5 || lm->valuedouble == 15 || lm->valuedouble == 30))
+                out->landed_minutes = (uint8_t)lm->valuedouble;
+        }
     }
     if (!cJSON_IsObject(dc)) { cJSON_Delete(root); return false; }
     out->has_display_config = true;
@@ -263,6 +273,40 @@ bool fw_feed_display(const char *config_json, FwFeedDisplay *out){
     copy(out->loading, sizeof out->loading, str(dc, "loading_template"), "TEXT");
     copy(out->locale, sizeof out->locale, str(dc, "locale"), "en");
     out->dwell_ms = fw_display_speed_ms(str(dc, "flight_display_speed"));
+    {   /* 4.2 (FUN_4201d53c): 2, 3, 5, 10, 20 or 30 s overrides the speed */
+        const cJSON *sec = item(dc, "flight_display_seconds");
+        if (cJSON_IsNumber(sec)) {
+            double d = sec->valuedouble;
+            if (d == 2 || d == 3 || d == 5 || d == 10 || d == 20 || d == 30) out->dwell_ms = (uint32_t)d * 1000u;
+        }
+    }
+    {   /* 4.2: the flight number, field formats, the owner's slots, weather (LAYOUTS.md, WEATHER.md) */
+        const char *fi = str(dc, "flight_identity"), *f;
+        const cJSON *slots, *e, *wx = item(dc, "weather");
+        int count, i;
+        const FwSlot *table;
+        out->flight_number = fi && !strcmp(fi, "iata_flight_number");
+        f = str(md, "alt_b_format");
+        out->alt_format = f && !strcmp(f, "short") ? 1 : f && !strcmp(f, "flight_level") ? 2 : 0;
+        f = str(md, "vel_format"); out->vel_format = f && !strcmp(f, "short");
+        f = str(md, "vr_format"); out->vr_format = f && !strcmp(f, "short");
+        f = str(md, "trk_format"); out->trk_format = f && !strcmp(f, "short");
+        table = fw_flight_slots(true, out->layout, &count);
+        slots = item(item(item(item(dc, "layout_overrides"), "area"), out->layout), "slots");
+        if (!cJSON_IsObject(slots)) slots = NULL;
+        cJSON_ArrayForEach(e, slots) {
+            int field = cJSON_IsString(e) ? fw_flight_field_parse(e->valuestring) : -1;
+            if (field < 0) continue;
+            for (i = 0; i < count && i < FW_SLOTS_MAX; ++i)
+                if (!strcmp(table[i].name, e->string)) out->slots[i] = (uint8_t)(field + 1);
+        }
+        out->weather_enabled = cJSON_IsTrue(item(wx, "enabled"));
+        out->weather_layout = (uint8_t)fw_weather_layout_parse(str(wx, "layout"));
+        out->temp_unit = fw_weather_temp_unit(str(md, "temp_unit"));
+        out->wind_unit = fw_weather_wind_unit(str(md, "wind_unit"));
+        out->vis_unit = fw_weather_vis_unit(str(md, "vis_unit"));
+        out->ceil_unit = fw_weather_ceil_unit(str(md, "ceil_unit"));
+    }
     {
         const cJSON *hide = item(dc, "hide_max_flights_screen");
         out->max_flights = fw_max_flights_parse(str(dc, "max_flights_behavior"), cJSON_IsBool(hide), cJSON_IsTrue(hide));
