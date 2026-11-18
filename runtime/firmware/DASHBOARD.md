@@ -122,3 +122,13 @@ the wall and `qr_showing` cleared itself after 30 s; an unknown body was
 refused (400); the switch on, on again, then off wrote NVS exactly twice
 (`owned_setting_saved` ×2, the repeat wrote nothing). The `fw_owned`
 namespace now exists on the board with the switch off.
+
+## Customize lines (vendor 4.2 slots)
+
+Display › Customize lines lists every spot of the chosen layout with a menu of
+fields (`display_config.layout_overrides`, FLIGHT-SCREENS.md "Vendor 4.2").
+As in the FlightWall app, the preview is the editor too: with it on
+"Flights", a tap on a line outlines that spot in amber and opens a row of
+fields under the picture (the default marked); a choice shows at once, and
+choosing the default removes the override. The boxes are the mini's own
+(halves split their line at its middle).

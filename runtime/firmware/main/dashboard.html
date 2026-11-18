@@ -279,6 +279,27 @@ var FIELDS=[['airline','Airline'],['callsign','Callsign'],['registration','Regis
 var SLOTS={DEFAULT:[['heading1','Top line','airline'],['heading2','Second line','route'],['heading3','Third line','aircraft_type'],['footer1','Bottom, first','origin'],['footer2','Bottom, second','destination']],
  NO_LOGO:[['heading1','Top line','airline'],['heading2a','Second line, left','route'],['heading2b','Second line, right','aircraft_type'],['heading3','Third line','origin'],['footer1','Bottom, first','destination'],['footer2a','Last line, left','altitude'],['footer2b','Last line, right','speed']],
  TECHNICAL:[['heading1','Top line','airline'],['heading2','Second line','route'],['heading3','Third line','aircraft_type'],['footer1a','Bottom left','altitude'],['footer1b','Bottom right','speed'],['footer2a','Last line, left','track'],['footer2b','Last line, right','vertical_rate']]};
+/* Tap a line on the preview to choose what it shows (as the FlightWall app's
+ * "Customize slots"): the lines' boxes on the mini, in panel pixels; a half
+ * is the left or right half of its line (FLIGHT-SCREENS.md "Vendor 4.2"). */
+var LINES={heading1:[40,2,86,12],heading2:[40,14,86,12],heading3:[40,26,86,12],footer1:[2,40,124,10],footer2:[2,52,124,10]};
+function slotBox(lay,name){var parent=name.replace(/[ab]$/,''),r=LINES[parent];if(!r)return null;r=r.slice();
+ if(lay==='NO_LOGO'&&/^heading/.test(parent)){r[0]=2;r[2]=124}
+ if(/[ab]$/.test(name)&&name!==parent){var half=Math.floor(r[2]/2);if(/b$/.test(name))r[0]+=half;r[2]=half}
+ return r}
+function slotAt(px,py){var lay=val('display_config.layout_template','DEFAULT'),list=SLOTS[lay]||SLOTS.DEFAULT,i,b;
+ for(i=0;i<list.length;i++){b=slotBox(lay,list[i][0]);if(b&&px>=b[0]&&px<b[0]+b[2]&&py>=b[1]&&py<b[1]+b[3])return list[i]}
+ return null}
+function pvTap(e){if(st.tab!=='display'||PV.want!==0||!PV.el)return;var r=PV.el.getBoundingClientRect(),
+  x=(e.clientX-r.left)/r.width*128,y=(e.clientY-r.top)/r.height*64,hit=slotAt(x,y);
+ PV.pick=hit&&(!PV.pick||PV.pick!==hit[0])?hit[0]:null;render()}
+function pickView(){var lay=val('display_config.layout_template','DEFAULT'),list=SLOTS[lay]||SLOTS.DEFAULT,x=null,i;
+ for(i=0;i<list.length;i++)if(list[i][0]===PV.pick)x=list[i];
+ if(!x||PV.want!==0)return '<p class="note" style="margin-top:2px">Tap a line on the picture to choose what it shows.</p>';
+ var path='display_config.layout_overrides.area.'+lay+'.slots.'+x[0],v=get(st.work,path)||x[2];
+ return '<div class="field" style="margin-top:6px"><div class="label">'+esc(x[1])+'<small>What this spot shows</small></div><div class="chips">'+
+  FIELDS.map(function(f){return '<button type="button" class="btn small'+(v===f[0]?' primary':'')+'" data-pick="'+f[0]+'">'+esc(f[1])+(f[0]===x[2]?' · default':'')+'</button>'}).join('')+
+  '<button type="button" class="btn small" data-pick-done="1">Done</button></div></div>'}
 function fieldName(f){for(var i=0;i<FIELDS.length;i++)if(FIELDS[i][0]===f)return FIELDS[i][1];return f}
 function slotsCard(){var lay=val('display_config.layout_template','DEFAULT'),list=SLOTS[lay]||SLOTS.DEFAULT,
   base='display_config.layout_overrides.area.'+lay+'.slots.',any=list.some(function(x){var v=get(st.work,base+x[0]);return v&&v!==x[2]});
@@ -609,7 +630,7 @@ var SAMPLE={overflow:0,flights:[
 function pvCard(fixed){PV.want=fixed===undefined?PV.mode:fixed;
  return '<section class="card pv-card"><div class="pv-head"><h2>Preview</h2>'+(fixed===undefined?'<div class="seg" role="group" aria-label="Preview shows">'+
   [[0,'Flights'],[1,'No flights']].map(function(o){return '<button type="button" data-pv="'+o[0]+'" aria-pressed="'+(PV.mode===o[0])+'">'+o[1]+'</button>'}).join('')+'</div>':'')+
-  '</div><div id="pv-slot"></div><p class="note" id="pv-note">Loading the preview…</p></section>'}
+  '</div><div id="pv-slot"></div><p class="note" id="pv-note">Loading the preview…</p>'+(fixed===undefined&&st.tab==='display'?pickView():'')+'</section>'}
 function pvStr(s){var b=new TextEncoder().encode(s),m=PV.mod,p=m.pv_alloc(b.length+1),v=new Uint8Array(m.memory.buffer,p,b.length+1);v.set(b);v[b.length]=0;return p}
 function pvCall(fn){var ps=Array.prototype.slice.call(arguments,1).map(pvStr);fn.apply(null,ps);ps.forEach(function(p){PV.mod.pv_free(p)})}
 function pvText(p){var m=new Uint8Array(PV.mod.memory.buffer),e=p;while(m[e])e++;return new TextDecoder().decode(m.subarray(p,e))}
@@ -621,7 +642,7 @@ function pvBoot(){if(PV.mod||PV.failed||PV.loading)return;PV.loading=true;
  .then(function(r){PV.later=false;PV.mod=r.instance.exports;PV.mod._initialize();PV.t0=performance.now();pvSync();pvFlights()})
  .catch(function(e){if(e==='later'){PV.later=true;setTimeout(pvBoot,3000)}else PV.failed=true;pvNote()}).then(function(){PV.loading=false})}
 function pvMake(){var c=document.createElement('canvas'),m=document.createElement('canvas'),x,y,i;
- c.width=m.width=1024;c.height=m.height=512;c.className='pv';c.setAttribute('role','img');c.setAttribute('aria-label','Preview of the wall');
+ c.width=m.width=1024;c.height=m.height=512;c.className='pv';c.addEventListener('click',pvTap);c.style.cursor='pointer';c.setAttribute('role','img');c.setAttribute('aria-label','Preview of the wall');
  PV.el=c;PV.ctx=c.getContext('2d');PV.small=document.createElement('canvas');PV.small.width=128;PV.small.height=64;PV.sctx=PV.small.getContext('2d');PV.img=PV.sctx.createImageData(128,64);
  x=m.getContext('2d');x.fillStyle='#08090b';x.fillRect(0,0,1024,512);x.globalCompositeOperation='destination-out';x.beginPath();
  for(y=0;y<64;y++)for(i=0;i<128;i++){x.moveTo(i*8+7.3,y*8+4);x.arc(i*8+4,y*8+4,3.3,0,6.2832)}
@@ -629,7 +650,9 @@ function pvMake(){var c=document.createElement('canvas'),m=document.createElemen
 /* each pixel of the frame as one LED; unlit LEDs stay faintly visible, as on the panel */
 function pvDraw(){if(!PV.ctx)return;var d=PV.img.data,f=PV.mod?new Uint8Array(PV.mod.memory.buffer,PV.mod.pv_frame(),32768):null,i,r,g,b;
  for(i=0;i<32768;i+=4){r=f?f[i]:0;g=f?f[i+1]:0;b=f?f[i+2]:0;if(!(r|g|b)){r=30;g=31;b=36}d[i]=r;d[i+1]=g;d[i+2]=b;d[i+3]=255}
- PV.sctx.putImageData(PV.img,0,0);PV.ctx.imageSmoothingEnabled=false;PV.ctx.drawImage(PV.small,0,0,1024,512);PV.ctx.drawImage(PV.mask,0,0)}
+ PV.sctx.putImageData(PV.img,0,0);PV.ctx.imageSmoothingEnabled=false;PV.ctx.drawImage(PV.small,0,0,1024,512);PV.ctx.drawImage(PV.mask,0,0);
+ if(PV.pick&&PV.want===0&&st.tab==='display'){var b=slotBox(val('display_config.layout_template','DEFAULT'),PV.pick);
+  if(b&&slotAt(b[0]+1,b[1]+1)&&slotAt(b[0]+1,b[1]+1)[0]===PV.pick){PV.ctx.strokeStyle='#e0a840';PV.ctx.lineWidth=6;PV.ctx.strokeRect(b[0]*8+3,b[1]*8+3,b[2]*8-6,b[3]*8-6)}}}
 function pvSync(){if(!PV.mod||!st.work)return;var a=JSON.stringify(st.aliasWork||[]),w=JSON.stringify(st.work);
  if(a!==PV.sentA){PV.sentA=a;pvCall(PV.mod.pv_aliases,a)}
  if(w!==PV.sent){PV.sent=w;pvCall(PV.mod.pv_settings,w)}
@@ -658,7 +681,7 @@ function pvNote(){var n=$('#pv-note');if(!n)return;
  n.textContent=t.join(' · ');
  if(PV.el)PV.el.style.filter=!on||(asleep&&!pct)?'brightness(.3)':'brightness('+(0.55+0.45*Math.sqrt(pct/100)).toFixed(2)+')'}
 function pvMount(root){var slot=$('#pv-slot',root);if(!slot)return;
- if(!PV.el)pvMake();slot.appendChild(PV.el);pvBoot();pvSync();pvTick()}
+ if(!PV.el)pvMake();slot.appendChild(PV.el);pvBoot();pvSync();pvTick();pvDraw()}
 function pvTick(){if(!PV.mod||!PV.el||!PV.el.isConnected||document.hidden)return;
  if(PV.cur!==PV.want){PV.cur=PV.want;PV.mod.pv_mode(PV.want);pvNote()}
  if(Date.now()-PV.flightsAt>20000)pvFlights();
@@ -873,13 +896,17 @@ function wire(root){
   set(st.work,path,el.value||undefined);
   if(!el.value){delete slots[path.split('.').pop()]}
   changed();render()}});
+ $$('[data-pick]',root).forEach(function(b){b.onclick=function(){var lay=val('display_config.layout_template','DEFAULT'),list=SLOTS[lay]||SLOTS.DEFAULT,d=null,i;
+   for(i=0;i<list.length;i++)if(list[i][0]===PV.pick)d=list[i][2];
+   set(st.work,'display_config.layout_overrides.area.'+lay+'.slots.'+PV.pick,b.dataset.pick===d?undefined:b.dataset.pick);changed();render()}});
+ $$('[data-pick-done]',root).forEach(function(b){b.onclick=function(){PV.pick=null;render()}});
  var sr=$('#slots-reset',root);if(sr)sr.onclick=function(){var lay=val('display_config.layout_template','DEFAULT');
   set(st.work,'display_config.layout_overrides.area.'+lay+'.slots',{});changed();render()};
  $$('[data-sw2]',root).forEach(function(el){el.onchange=function(){set(st.work,el.dataset.sw2,el.checked?el.dataset.on:el.dataset.off);changed()}});
  var so=$('#sleepOn',root);if(so)so.onchange=function(){set(st.work,'display_config.sleep_time',so.checked?{start:'23:00',end:'07:00',sleep_brightness_percent:0}:undefined);changed();render()};
  $$('[data-speed]',root).forEach(function(el){el.onchange=function(){clearBad(el);set(st.work,el.dataset.speed,el.value===''?undefined:Math.min(400,Math.max(0,Math.round(Number(el.value)*KTS))));changed()}});
  areasWire(root);
- $$('[data-pv]',root).forEach(function(b){b.onclick=function(){PV.mode=+b.dataset.pv;render()}});
+ $$('[data-pv]',root).forEach(function(b){b.onclick=function(){PV.mode=+b.dataset.pv;PV.pick=null;render()}});
  var ax=$('#add-extra',root);if(ax)ax.onclick=function(){listAt('display_config.clock.additional_timezones').push({label:'',time_zone:{standard_utc_offset_minutes:0,dst_rule:'none'}});changed();render()};
  $$('[data-del-extra]',root).forEach(function(b){b.onclick=function(){listAt('display_config.clock.additional_timezones').splice(+b.dataset.delExtra,1);changed();render()}});
  codeAdder(root,'airline-in','airline-add','request_config.data_filters.airline_icao_filter',/^[A-Z]{3}$/,'Airline codes are three letters, e.g. DAL',32,true);
