@@ -102,6 +102,8 @@ typedef struct {
     uint8_t weather_layout;          /* weather.layout, FwWeatherLayout */
     uint8_t temp_unit, wind_unit, vis_unit, ceil_unit;   /* metric_display, FwWeatherSettings */
     char weather_station[6];         /* owned_config.weather_station: "" = the nearest to the first area */
+    bool clock_in_rotation;          /* owned_config.clock_in_rotation: the clock between flights */
+    bool weather_in_rotation;        /* owned_config.weather_in_rotation: the weather between flights (fetched for it) */
     bool vendor_images;              /* owned_config.vendor_images, default "auto": keep the vendor's images current */
     uint8_t landed_minutes;          /* owned_config.tracked_landed_minutes: 5, 15 or 30; 0 = the default (15) */
 } FwFeedDisplay;

@@ -26,6 +26,14 @@ The weather replaces the clock: it shows only with `loading_template`
 "When the sky is quiet › Weather" sets both. (Stock also drops the clock's
 extra time zones while weather is on; the owned firmware keeps them.)
 
+**Between flights (owned):** `owned_config.weather_in_rotation` (and
+`clock_in_rotation` for the clock) puts the weather in the flights' rotation:
+once a pass through the flights, at least every 20 s, at a card's end, for a
+flight's time but at least 6 s, the weather first when both are on; then the
+rotation carries on with the flight that was due. Only with a fresh report;
+never during tracked flights, Sync or a game. It fetches the weather even when
+the "sky is quiet" screen is not the weather (`main/display.cpp` "breaks").
+
 ## Where the record comes from
 
 - **FlightWall feed:** the response's top-level `weather` map

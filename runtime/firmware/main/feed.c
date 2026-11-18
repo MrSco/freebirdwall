@@ -419,7 +419,7 @@ static bool room_for(size_t bytes, size_t biggest){
 static void weather_want(FwWeatherWant *w){
     memset(w, 0, sizeof *w);
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    w->enabled = s_display.weather_enabled && s_display.has_display_config;
+    w->enabled = (s_display.weather_enabled || s_display.weather_in_rotation) && s_display.has_display_config;
     w->community = s_source == FW_SOURCE_COMMUNITY;
     snprintf(w->station, sizeof w->station, "%s", s_display.weather_station);
     w->has_area = s_area_count > 0;

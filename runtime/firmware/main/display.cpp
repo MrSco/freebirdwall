@@ -533,12 +533,13 @@ void weather_release(){
     s_wx_on = false;
 }
 
-/* Draws the weather when it should show; false for the clock (or the text). */
-bool weather_screen(const FwSurface *s, bool enter){
+/* Draws the weather when it should show; false for the clock (or the text).
+ * between: asked for as a break in the flights' rotation (weather_in_rotation). */
+bool weather_screen(const FwSurface *s, bool enter, bool between = false){
     const FwFeedDisplay *d = &s_live_display;
     uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
     int64_t now = (int64_t)std::time(nullptr);
-    if (!d->weather_enabled) { if (s_wxs) weather_release(); return false; }
+    if (!(between ? d->weather_in_rotation : d->weather_enabled)) { if (s_wxs) weather_release(); return false; }
     if (!s_wxs) {
         FwMemSnapshot m;
         fw_mem_snapshot(&m);
@@ -631,11 +632,76 @@ void live_tracked_tick(const FwSurface *s){
     live_tracked_draw(s);
 }
 
+/* Owned: the clock and the weather between flights (owned_config.clock_in_rotation,
+ * weather_in_rotation). Once a pass through the flights (at least every
+ * 20 s), at a slot's end, a break shows the weather (when there is a fresh
+ * report), then the clock (when it is set), each for a flight's time but at
+ * least 6 s; the rotation then carries on with the flight that was due. */
+enum Break { BreakNone, BreakWeather, BreakClock };
+Break s_break = BreakNone;
+uint32_t s_break_at, s_break_last;
+
+uint32_t break_ms(){ return s_live_rotation.dwell_ms > 6000 ? s_live_rotation.dwell_ms : 6000; }
+
+/* Starts the next extra after `after`; false when none is on and ready. */
+bool break_next(const FwSurface *s, Break after, uint32_t now){
+    const FwFeedDisplay *d = &s_live_display;
+    if (after < BreakWeather && d->weather_in_rotation && weather_screen(s, true, true)) {
+        s_break = BreakWeather;
+        s_break_at = now;
+        return true;
+    }
+    if (s_wxs) weather_release();
+    if (after < BreakClock && d->clock_in_rotation && clock_set()) {
+        s_break = BreakClock;
+        s_break_at = now;
+        clock_enter(s);
+        return true;
+    }
+    return false;
+}
+
+/* While a break shows: true (the flights wait). At its end the flight due is drawn afresh. */
+bool break_tick(const FwSurface *s, uint32_t now){
+    if (s_break == BreakNone) return false;
+    if (now - s_break_at < break_ms()) {
+        if (s_break == BreakWeather ? weather_screen(s, false, true) : (clock_refresh(s), true)) return true;
+    }
+    if (break_next(s, s_break, now)) return true;
+    s_break = BreakNone;
+    s_break_last = now;
+    fw_screen_scroll_reset();
+    s_live_rotation.since = now ? now : 1;       /* the flight that was due gets its whole time */
+    s_live_rotation.dirty = true;
+    s_live_redraw = true;
+    return false;
+}
+
+void break_cancel(){
+    if (s_break == BreakWeather || s_wxs) weather_release();
+    s_break = BreakNone;
+}
+
 void live_rotation_tick(const FwSurface *s){
     const FwFlight *f;
     int more;
     bool redraw;
-    FwShow show = fw_rotation_tick(&s_live_rotation, (uint32_t)(esp_timer_get_time() / 1000), &f, &more, &redraw);
+    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+    if (break_tick(s, now)) return;
+    FwShow show = fw_rotation_tick(&s_live_rotation, now, &f, &more, &redraw);
+    {   /* a break is due: at a slot's end, or by time alone with a single flight */
+        const FwFeedDisplay *d = &s_live_display;
+        int slots = s_live_rotation.count < s_live_rotation.cap ? s_live_rotation.count : s_live_rotation.cap;
+        uint32_t cycle = (uint32_t)(slots > 0 ? slots : 1) * s_live_rotation.dwell_ms;
+        if (cycle < 20000) cycle = 20000;
+        if (!s_break_last) s_break_last = now;
+        if ((d->clock_in_rotation || d->weather_in_rotation) && show == FW_SHOW_FLIGHT &&
+            (int32_t)(now - s_break_last) >= (int32_t)cycle &&
+            (redraw || slots < 2) && break_next(s, BreakNone, now)) {
+            s_live_rotation.dirty = true;            /* drawn when the break ends */
+            return;
+        }
+    }
     if (s_logo_pending && !fw_big_busy()) s_live_redraw = true;   /* the logo can be decoded now */
     if (!redraw && !s_live_redraw) { logo_ahead(fw_rotation_next(&s_live_rotation)); card_scroll(s); return; }
     s_live_redraw = false;
@@ -674,7 +740,8 @@ bool live_step(const FwSurface *s, bool enter){
         s_live_ready = true;
     }
     mode = !s_live_ready || !s_live.count ? LiveEmpty : s_live.tracked ? LiveTracked : LiveRotation;
-    if (mode != LiveEmpty && s_wxs) weather_release();   /* flights again: the weather's memory back */
+    if ((mode != LiveRotation || enter) && s_break != BreakNone) break_cancel();   /* a break belongs to the rotation */
+    if (mode != LiveEmpty && s_wxs && s_break != BreakWeather) weather_release();   /* flights again: the weather's memory back */
     if (mode != s_live_mode || enter) {
         s_live_mode = mode;
         if (mode == LiveRotation) {

@@ -297,7 +297,8 @@ ENUM(v_assets, "auto", "off")
 static const Rule OWNED[] = {{"flight_source", v_source}, {"follow_app", v_bool}, {"tracking_source", v_tracking},
                              {"scroll_speed", v_scroll}, {"progress_bar", v_bool}, {"heartbeat_enabled", v_bool},
                              {"weather_station", v_station}, {"tracked_landed_minutes", v_landed},
-                             {"vendor_images", v_assets}, {NULL, NULL}};
+                             {"vendor_images", v_assets}, {"clock_in_rotation", v_bool},
+                             {"weather_in_rotation", v_bool}, {NULL, NULL}};
 
 static const Rule REQUEST[] = {{"radius_requests", v_zones}, {"data_filters", v_filters},
                                {"tracked_flights", v_tracked}, {NULL, NULL}};

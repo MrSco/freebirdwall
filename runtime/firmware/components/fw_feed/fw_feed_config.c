@@ -257,6 +257,8 @@ bool fw_feed_display(const char *config_json, FwFeedDisplay *out){
             const char *vi = str(item(root, "owned_config"), "vendor_images");
             const cJSON *lm = item(item(root, "owned_config"), "tracked_landed_minutes");
             out->vendor_images = !(vi && !strcmp(vi, "off"));
+            out->clock_in_rotation = cJSON_IsTrue(item(item(root, "owned_config"), "clock_in_rotation"));
+            out->weather_in_rotation = cJSON_IsTrue(item(item(root, "owned_config"), "weather_in_rotation"));
             if (cJSON_IsNumber(lm) && (lm->valuedouble == 5 || lm->valuedouble == 15 || lm->valuedouble == 30))
                 out->landed_minutes = (uint8_t)lm->valuedouble;
         }

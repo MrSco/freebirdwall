@@ -126,6 +126,7 @@ keys. Each key given replaces the stored value; `null` removes it (not
 | `tracking_source` | `community` (default) or `aeroapi`: where tracked flights' times come from on the community source (FEED.md, "Tracked flights on the community source") |
 | `weather_station` | 3–4 capitals and digits, or `""` (default) for the station nearest the first area (WEATHER.md) |
 | `tracked_landed_minutes` | 5, 15 (default) or 30: how long a landed tracked flight stays on the community source |
+| `clock_in_rotation`, `weather_in_rotation` | bool, default false: the clock and/or the weather between flights, once a pass through them (at least every 20 s), each for a flight's time but at least 6 s, the weather first (WEATHER.md) |
 | `vendor_images` | `auto` (default) or `off`: keep the vendor's logos, weather icons and aircraft pictures current (UPDATES.md "Vendor images") |
 
 A saved change reaches the wall at once: the feed rebuilds its request and

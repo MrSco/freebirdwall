@@ -174,6 +174,9 @@ def test_display_42(exe, tmp):
     bad(exe, tmp, {'owned_config': {'weather_station': 'KBOSX'}}, 'owned_config.weather_station', 'owned 4.2: station length')
     bad(exe, tmp, {'owned_config': {'tracked_landed_minutes': 10}}, 'owned_config.tracked_landed_minutes', 'owned 4.2: minutes')
     bad(exe, tmp, {'owned_config': {'vendor_images': 'yes'}}, 'owned_config.vendor_images', 'owned 4.2: images')
+    d = ok(exe, tmp, {'owned_config': {'clock_in_rotation': True, 'weather_in_rotation': False}}, 'owned: breaks')
+    check(d['owned_config'] == {'clock_in_rotation': True, 'weather_in_rotation': False}, 'owned: breaks stored %r' % d)
+    bad(exe, tmp, {'owned_config': {'clock_in_rotation': 1}}, 'owned_config.clock_in_rotation', 'owned: breaks are bools')
 
 
 def test_request(exe, tmp):

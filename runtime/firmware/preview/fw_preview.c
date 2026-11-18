@@ -396,10 +396,12 @@ static void weather_sample(void){
     fw_weather_set_num(&s_wx, "ceil_ft", 4700); fw_weather_set_num(&s_wx, "temp_c", 27);
 }
 
-static bool weather_screen(bool enter){
+static bool weather_screen_ex(bool enter, bool between);
+static bool weather_screen(bool enter){ return weather_screen_ex(enter, false); }
+static bool weather_screen_ex(bool enter, bool between){
     FwWeatherSettings ws;
     bool full;
-    if (!s_disp.weather_enabled) { s_wx_on = 0; return false; }
+    if (!(between ? s_disp.weather_in_rotation : s_disp.weather_enabled)) { s_wx_on = 0; return false; }
     if (!s_wx_given) weather_sample();
     if (!fw_weather_valid(&s_wx) || fw_weather_age(&s_wx, (int64_t)s_unix) > FW_WX_STALE_S) { s_wx_on = 0; return false; }
     if (s_wx_on && !enter && s_now - s_wx_at < 200) return true;
@@ -475,11 +477,56 @@ static void tracked_tick(void){
     tracked_draw();
 }
 
+/* display.cpp: the clock and the weather between flights */
+enum { BreakNone, BreakWeather, BreakClock };
+static int s_break;
+static uint32_t s_break_at, s_break_last;
+
+static uint32_t break_ms(void){ return s_rot.dwell_ms > 6000 ? s_rot.dwell_ms : 6000; }
+
+static bool break_next(int after){
+    if (after < BreakWeather && s_disp.weather_in_rotation && weather_screen_ex(true, true)) {
+        s_break = BreakWeather; s_break_at = s_now; return true;
+    }
+    s_wx_on = 0;
+    if (after < BreakClock && s_disp.clock_in_rotation && clock_set()) {
+        s_break = BreakClock; s_break_at = s_now; clock_enter(); return true;
+    }
+    return false;
+}
+
+static bool break_tick(void){
+    if (s_break == BreakNone) return false;
+    if (s_now - s_break_at < break_ms()) {
+        if (s_break == BreakWeather ? weather_screen_ex(false, true) : (clock_refresh(), true)) return true;
+    }
+    if (break_next(s_break)) return true;
+    s_break = BreakNone;
+    s_break_last = s_now;
+    fw_screen_scroll_reset();
+    s_rot.since = s_now ? s_now : 1;
+    s_rot.dirty = true;
+    s_shown_al[0] = 0;
+    return false;
+}
+
 static void rotation_tick(bool redraw_anyway){
     const FwFlight *f;
     int more;
     bool redraw;
-    FwShow show = fw_rotation_tick(&s_rot, s_now, &f, &more, &redraw);
+    FwShow show;
+    if (break_tick()) return;
+    show = fw_rotation_tick(&s_rot, s_now, &f, &more, &redraw);
+    {
+        int slots = s_rot.count < s_rot.cap ? s_rot.count : s_rot.cap;
+        uint32_t cycle = (uint32_t)(slots > 0 ? slots : 1) * s_rot.dwell_ms;
+        if (cycle < 20000) cycle = 20000;
+        if ((s_disp.clock_in_rotation || s_disp.weather_in_rotation) && show == FW_SHOW_FLIGHT &&
+            (int32_t)(s_now - s_break_last) >= (int32_t)cycle && (redraw || slots < 2) && break_next(BreakNone)) {
+            s_rot.dirty = true;
+            return;
+        }
+    }
     if (s_logo_arrived) { s_logo_arrived = 0; redraw_anyway = true; }
     if (!redraw && !redraw_anyway) { card_scroll(); return; }
     s_frame.indicator = s_rot.indicator;
@@ -517,6 +564,8 @@ EXPORT(pv_step) int pv_step(uint32_t now_ms, double unix_s){
          : s_live.tracked ? LiveTracked : LiveRotation;
     if (mode != s_mode || enter) {
         s_mode = mode;
+        s_break = BreakNone;
+        s_break_last = s_now;
         if (mode == LiveRotation) {
             fw_rotation_init(&s_rot, s_disp.max_flights, s_disp.dwell_ms);
             fw_rotation_set_list(&s_rot, s_live.flights, s_live.count, s_live.overflow);

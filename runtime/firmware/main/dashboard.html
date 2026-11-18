@@ -296,13 +296,15 @@ function viewDisplay(){var P='display_config.',sleepOn=!!get(st.work,P+'sleep_ti
   seg(P+'flight_identity',[['callsign','Callsign · ANZ7'],['iata_flight_number','Flight number · NZ7']],'callsign','Callsigns show as','The flight number when the flight data has one (the FlightWall service sends it)')+
   seg(P+'layout_template',[['DEFAULT','Logo'],['NO_LOGO','No logo'],['TECHNICAL','Technical']],'DEFAULT','Layout','Technical shows altitude, speed and heading')+
   sel(P+'flight_display_seconds',HOLD,holdDefault(),'Time on each flight','Longer for areas with few flights')+
+  sw('owned_config.clock_in_rotation',false,'Clock between flights','After each pass through the flights (at least every 20 s), for a flight’s time')+
+  sw('owned_config.weather_in_rotation',false,'Weather between flights','The same, with the weather report; before the clock when both are on')+
   seg(P+'max_flights_behavior',[['text','Count screen'],['indicator_led','Corner light'],['off','Nothing']],'text','More than five flights')+
   quietSeg()+
   sw('owned_config.progress_bar',false,'Progress bar','How far each flight is between its airports, along the bottom')+
   (get(st.work,'owned_config.progress_bar')?'<p class="note" style="margin-top:0">'+(get(st.work,'owned_config.flight_source')==='community'?
    'From the positions the wall already has. Flights with no known route show no bar.':
    'The FlightWall service sends no positions, so the wall looks each flight on screen up on adsb.fi, about once a minute. Flights adsb.fi cannot see show no bar.')+'</p>':''))+
- slotsCard()+(quietNow()==='WEATHER'?weatherCard():'')+'</div>'+
+ slotsCard()+(quietNow()==='WEATHER'||get(st.work,'owned_config.weather_in_rotation')?weatherCard():'')+'</div>'+
  '<div class="grid">'+
  card('Brightness','',
   range(P+'brightness_percent',1,100,15,'Brightness','%')+
@@ -632,7 +634,7 @@ function pvSync(){if(!PV.mod||!st.work)return;var a=JSON.stringify(st.aliasWork|
  if(a!==PV.sentA){PV.sentA=a;pvCall(PV.mod.pv_aliases,a)}
  if(w!==PV.sent){PV.sent=w;pvCall(PV.mod.pv_settings,w)}
  pvNote()}
-function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();if(get(st.work||{},'display_config.weather.enabled'))pvWeather();
+function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();if(get(st.work||{},'display_config.weather.enabled')||get(st.work||{},'owned_config.weather_in_rotation'))pvWeather();
  api('/api/flights').catch(function(){return null}).then(function(j){var live=!!(j&&j.flights&&j.flights.length),s=JSON.stringify(live?j:SAMPLE);
   PV.live=live;if(s!==PV.sentF){PV.sentF=s;pvCall(PV.mod.pv_flights,s)}pvNote()})}
 function pvLogos(){for(var i=0,p,k;i<8&&(p=PV.mod.pv_logo_wanted(i));i++){k=pvText(p);if(!PV.logos[k]){PV.logos[k]=1;pvLogo(k)}}}
@@ -928,7 +930,7 @@ var EDITABLE={display_config:['layout_template','loading_template','title_text',
   'flight_display_seconds','flight_identity','weather','layout_overrides'],
  request_config:['radius_requests','data_filters','tracked_flights'],
  owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar','heartbeat_enabled','weather_station',
-  'tracked_landed_minutes','vendor_images']};
+  'tracked_landed_minutes','vendor_images','clock_in_rotation','weather_in_rotation']};
 function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
   EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
   if(e.radius_requests===null)delete e.radius_requests;

@@ -131,6 +131,10 @@ def scenarios():
     scene('weather_sample', settings(loading_template='CLOCK', weather={'enabled': True, 'layout': 'simple'},
                                      metric_display={'temp_unit': 'fahrenheit'}), {'flights': {'flights': []}},
           {'weather': {}}, dumps=(0,))
+    # owned: the weather, then the clock, between flights (once a pass, at least every 20 s, 6 s each)
+    scene('breaks', settings(flight_display_speed='fast', weather={'enabled': False},
+                             owned={'clock_in_rotation': True, 'weather_in_rotation': True}), fl, {'weather': wx},
+          until=34000, dumps=(1000, 20500, 26500, 33000))
     # a setting changed in the middle: the preview starts the card over, like the wall
     mid = [settings(), fl] + logos
     run_steps(mid, 0, 2001)
