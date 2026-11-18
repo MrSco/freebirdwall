@@ -183,7 +183,12 @@ function set(o,path,v){var ks=path.split('.'),last=ks.pop(),t=o;
  ks.forEach(function(k){if(t[k]==null||typeof t[k]!=='object')t[k]={};t=t[k]});
  if(v===undefined){if(Array.isArray(t))t.splice(+last,1);else delete t[last]}else t[last]=v}
 function idOf(p){return 'f_'+p.replace(/\W/g,'_')}
-function api(path,opt){opt=opt||{};opt.headers=opt.headers||{};opt.cache='no-store';
+/* The wall answers 503 "busy" when its working memory is in use for a
+ * moment (a flight lookup, a logo): a reading request is asked again, up to
+ * three times, before it counts as failed. Writes are never repeated here. */
+function api(path,opt,tries){opt=opt||{};var reading=!opt.method||opt.method==='GET';tries=tries===undefined?3:tries;
+ return api1(path,opt).catch(function(e){if(e.status===503&&reading&&tries>0)return new Promise(function(r){setTimeout(r,600)}).then(function(){return api(path,opt,tries-1)});throw e})}
+function api1(path,opt){opt.headers=opt.headers||{};opt.cache='no-store';
  if(key&&path.indexOf('/api/games')<0)opt.headers.Authorization='Bearer '+key;
  if(opt.json!==undefined){opt.body=JSON.stringify(opt.json);opt.headers['Content-Type']='application/json';delete opt.json}
  return fetch(path,opt).then(function(r){return r.text().then(function(t){var j={};try{j=t?JSON.parse(t):{}}catch(e){}
@@ -939,7 +944,17 @@ function aliasProblems(){var seen={},n=0;$$('[data-alias-err]').forEach(function
   seen[a.kind+'|'+a.from]=1;
   if(why){n++;var e=$('[data-alias-err="'+i+'"]');if(e)e.textContent=why}});
  return n}
-function failed(e){if(e.status===409){toast('Changed from another browser · reloaded');refresh(true);return}toast(e.message)}
+function failed(e){if(e.status===409||e.status===503||!e.status){rebase(e.status===409?'Changed elsewhere':'The wall was busy');return}toast(e.message)}
+/* After a save the wall refused as stale (409), or one whose answer never
+ * came (busy, a dropped connection): the wall's settings are read again
+ * (they may already hold the save) and what is still different here is put
+ * back on top, so the bar shows only what is left to save. Never leaves the
+ * bar stuck on an old revision. */
+function rebase(why){var keep=edits();
+ api('/api/settings').then(function(j){loaded(j,true);
+  Object.keys(keep).forEach(function(sec){Object.keys(keep[sec]).forEach(function(k){var v=keep[sec][k];set(st.work,sec+'.'+k,v===null?undefined:clone(v))})});
+  changed();render();toast(st.dirty?why+' · your changes are kept, press Save again':'Saved · on the wall now')})
+ .catch(function(){toast('The wall is busy · press Save again in a moment')})}
 function markField(f){if(!f)return;var parts=f.split('.'),el=null;
  while(parts.length&&!el){el=$('[data-field="'+parts.join('.')+'"]');parts.pop()}
  if(!el){var tab=/^(request|owned)_config/.test(f)?'flights':/anchor/.test(f)?'airports':/time_zone|clock|date_format|locale/.test(f)?'clock':'display';

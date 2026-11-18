@@ -221,40 +221,50 @@ static void work_give(Work *w, size_t wipe){
 
 /* ------------------------------------------------------------ settings */
 
-/* Built in a work buffer: settings (up to 4 KiB), airport names (up to 4 KiB)
- * and the reply, instead of ~13 KiB of heap kept for it. Wiped before it is
- * given back. */
+/* Sent in pieces through one 4 KiB work buffer: the settings (up to 4 KiB),
+ * then the airport names (up to 4 KiB) into the same buffer, then the status.
+ * One block of 4 KiB is nearly always to be had; the 16 KiB this used to
+ * need in one piece seldom was, on a wall up for a while, and a save that went
+ * through then answered "busy" (the page kept the old revision, and the next
+ * save was refused as changed elsewhere). Wiped before it is given back. */
 static esp_err_t send_settings(httpd_req_t *req, const char *status){
-    enum { PART = 4096, NEED = 4 * PART + 256 };     /* the reply: both parts and its frame */
+    enum { PART = 4096 };
     uint32_t rev = 0;
     Work w;
-    char *doc, *aliases, *out;
-    size_t cap;
+    char head[96], tail[400];
     int n;
-    esp_err_t e;
-    if (!work_take(&w, NEED)) return error(req, "503 Service Unavailable", "busy, try again");
-    doc = w.b; aliases = w.b + PART; out = w.b + 2 * PART;
-    cap = w.cap - 2 * PART;
-    n = fw_store_settings_copy(doc, PART, &rev);
-    if (n < 0 || fw_aliases_json(aliases, PART) < 0) {
-        work_give(&w, 2 * PART);
-        return error(req, "500 Internal Server Error", n < 0 ? "settings too large" : "aliases");
+    esp_err_t e = ESP_OK;
+    if (!work_take(&w, PART)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_store_settings_copy(w.b, PART, &rev);
+    if (n < 0) { work_give(&w, PART); return error(req, "500 Internal Server Error", "settings too large"); }
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    snprintf(head, sizeof head, "{\"revision\":%u,\"settings\":", (unsigned)rev);
+    if (httpd_resp_send_chunk(req, head, HTTPD_RESP_USE_STRLEN) != ESP_OK ||
+        httpd_resp_send_chunk(req, n ? w.b : "null", HTTPD_RESP_USE_STRLEN) != ESP_OK ||
+        httpd_resp_send_chunk(req, ",\"aliases\":", HTTPD_RESP_USE_STRLEN) != ESP_OK) e = ESP_FAIL;
+    memset(w.b, 0, PART);
+    if (e == ESP_OK) {
+        if (fw_aliases_json(w.b, PART) < 0) snprintf(w.b, PART, "{\"revision\":0,\"aliases\":[]}");
+        if (httpd_resp_send_chunk(req, w.b, HTTPD_RESP_USE_STRLEN) != ESP_OK) e = ESP_FAIL;
     }
+    work_give(&w, PART);
+    if (e != ESP_OK) return e;
     {   /* 4.2: where the weather comes from, and the vendor's images (weather.h, vendor_images.h) */
         char src[20], stn[8];
         unsigned wx_status = 0, wx_requests = 0, wx_failures = 0;
         FwVendorImagesStatus im;
         fw_weather_status(src, sizeof src, stn, sizeof stn, &wx_status, &wx_requests, &wx_failures);
         fw_vendor_images_status(&im);
-        snprintf(out, cap, "{\"revision\":%u,\"settings\":%s,\"aliases\":%s,\"feed\":%d,"
+        snprintf(tail, sizeof tail, ",\"feed\":%d,"
                  "\"weather\":{\"source\":\"%s\",\"station\":\"%s\",\"status\":%u,\"requests\":%u,\"failures\":%u},"
                  "\"images\":{\"state\":\"%s\",\"installed\":\"%s\",\"available\":\"%s\",\"error\":\"%s\",\"done\":%u,\"total\":%u}}",
-                 (unsigned)rev, n ? doc : "null", aliases, (int)fw_feed_state(), src, stn, wx_status, wx_requests,
-                 wx_failures, im.state, im.installed, im.available, im.error, (unsigned)im.done, (unsigned)im.total);
+                 (int)fw_feed_state(), src, stn, wx_status, wx_requests, wx_failures, im.state, im.installed,
+                 im.available, im.error, (unsigned)im.done, (unsigned)im.total);
     }
-    e = reply(req, status, out);
-    work_give(&w, 2 * PART + strlen(out));
-    return e;
+    if (httpd_resp_send_chunk(req, tail, HTTPD_RESP_USE_STRLEN) != ESP_OK) return ESP_FAIL;
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 /* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Built in a work

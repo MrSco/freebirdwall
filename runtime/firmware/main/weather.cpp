@@ -221,7 +221,7 @@ extern "C" void fw_weather_step(const FwWeatherWant *want){
             s_auto[0] = 0;
             s_misses = 0;
             if (!nearest_station(want->lat, want->lon)) {
-                s_next_ms = now + RetryMs;
+                s_next_ms = now + 30000u;                    /* no station yet: soon again */
                 fw_mem_report("weather_station", nullptr);
                 return;
             }
@@ -230,7 +230,9 @@ extern "C" void fw_weather_step(const FwWeatherWant *want){
     }
     std::snprintf(s_station, sizeof s_station, "%s", station);
     bool ok = fetch(station);
-    s_next_ms = now_ms() + (ok ? EveryMs : RetryMs);
+    FwWeather held;
+    fw_weather_store_copy(&held);
+    s_next_ms = now_ms() + (ok ? EveryMs : fw_weather_valid(&held) ? RetryMs : 30000u);   /* none yet: soon again */
     char extra[96];
     std::snprintf(extra, sizeof extra, "\"ok\":%s,\"status\":%u,\"requests\":%u,\"failures\":%u", ok ? "true" : "false",
                   s_status, s_requests, s_failures);

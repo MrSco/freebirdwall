@@ -415,7 +415,7 @@ bool check(const esp_partition_t *p){
         uint32_t n = s_m.size - at < Sector ? s_m.size - at : Sector;
         if (esp_partition_read(p, at, s_chunk, n) != ESP_OK) { s_error = "read back failed"; return false; }
         owner_sha256_update(&h, s_chunk, n);
-        if ((at / Sector) % 16 == 15) vTaskDelay(1);     /* 2.5 MiB of hashing: let the other tasks run */
+        if ((at / Sector) % 4 == 3) vTaskDelay(1);      /* each read stops the other CPU: let its idle task run (task watchdog) */
     }
     owner_sha256_final(&h, digest);
     for (int i = 0; i < 32; ++i) std::snprintf(hex + 2 * i, 3, "%02x", digest[i]);
