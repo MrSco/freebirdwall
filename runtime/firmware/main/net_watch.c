@@ -119,12 +119,16 @@ void fw_net_watch_tick(void){
     v = fw_net_watch_check(&s_watch, now, on, m.free_internal, m.largest_internal);
     if (v == FW_NET_OK) return;
     fw_mem_snapshot(&m);
-    fw_state("{\"event\":\"network_watchdog\",\"why\":\"%s\",\"silent_s\":%u,\"pings\":%u,\"answered\":%u,"
-             "\"free\":%u,\"min_free\":%u,\"largest\":%u,\"note\":\"restarting; this log is kept\"}",
+    {   /* kept like a crash note, so the reason survives the lines after the restart */
+        static char line[256];
+        snprintf(line, sizeof line, "FWSTATE {\"event\":\"network_watchdog\",\"why\":\"%s\",\"silent_s\":%u,\"pings\":%u,"
+                 "\"answered\":%u,\"free\":%u,\"min_free\":%u,\"largest\":%u,\"t_ms\":%u,\"note\":\"restarting; this log is kept\"}",
              v == FW_NET_HEAP_EXHAUSTED ? "heap" : "router_silent",
              s_watch.replied ? (unsigned)((now - s_watch.reply_at) / 1000) : 0u, (unsigned)s_sent,
              (unsigned)s_answered, (unsigned)m.free_internal, (unsigned)m.min_free_internal,
-             (unsigned)m.largest_internal);
+             (unsigned)m.largest_internal, (unsigned)now);
+        fw_log_keep(line);
+    }
     vTaskDelay(pdMS_TO_TICKS(300));
     esp_restart();
 }

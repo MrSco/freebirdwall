@@ -61,6 +61,7 @@ uint32_t s_total;
 uint32_t s_done, s_next_ms, s_started_ms;
 int s_piece_fails;
 bool s_dirty_checked;
+bool s_week_checked;                /* the last good check's time has been read (fw_owned/fs_checked) */
 const char *s_state = "idle";
 const char *s_error = "";
 char s_installed[16], s_available[16];
@@ -101,6 +102,16 @@ uint32_t nvs_u32(const char *key){
     nvs_close(h);
     return v;
 }
+/* When the last check that found nothing wrong ended (unix seconds), so a
+ * restart does not check again within the week: one write a week at most. */
+void checked_now(){
+    nvs_handle_t h;
+    if (nvs_open(Ns, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_u32(h, "fs_checked", (uint32_t)std::time(nullptr));
+    nvs_commit(h);
+    nvs_close(h);
+}
+
 void nvs_put(const char *ver, uint32_t epoch, uint8_t dirty){
     nvs_handle_t h;
     if (nvs_open(Ns, NVS_READWRITE, &h) != ESP_OK) return;
@@ -189,36 +200,82 @@ size_t base64(const char *in, uint8_t *out, size_t cap){
 bool verify(const uint8_t digest[32], const uint8_t *sig, size_t sig_len){
     uint8_t *arena = fw_big_take(5000);
     if (!arena) return false;
+    uint32_t t0 = now_ms();
+    vTaskDelay(1);
     bool ok = fw_tls_ecdsa_p256_verify(arena, fw_big_bytes, VendorKey, sizeof VendorKey, digest, sig, sig_len);
     fw_big_give();
+    char ms[16];
+    std::snprintf(ms, sizeof ms, "%ums", (unsigned)(now_ms() - t0));
+    report(ok ? "verified" : "not_verified", ms);
+    vTaskDelay(1);
     return ok;
 }
 
 /* Fetches and checks the manifest (vendor_images.h); false with s_error set. */
-bool manifest(){
-    char *body = static_cast<char *>(std::malloc(4096));
-    size_t len = 0;
-    unsigned status;
-    uint32_t retry;
-    if (!body) { s_error = "memory"; return false; }
-    int stage = fw_https_get(Host, ManifestPath, nullptr, reinterpret_cast<const uint8_t *>(owner_tls_gts_r4),
-                             sizeof owner_tls_gts_r4, &status, &retry, [&](HttpBody &b){
-        for (int c; (c = b.read()) >= 0;) if (len < 4095) body[len++] = (char)c;
-        return true;
-    });
-    body[len] = 0;
-    if (stage || status != 200) { std::free(body); s_error = "manifest fetch failed"; return false; }
-    DynamicJsonDocument doc(3072);
-    bool parsed = !deserializeJson(doc, body, len);
-    std::free(body);
-    if (!parsed) { s_error = "manifest unreadable"; return false; }
+/* The manifest's body, bounded, straight into ArduinoJson (which copies what
+ * the filter keeps, so nothing points into a buffer that is gone). */
+struct BodyStream {
+    HttpBody *body;
+    size_t n = 0;
+    bool over = false;
+    int read(){
+        if (n >= 4096) { over = true; return -1; }
+        int c = body->read();
+        if (c >= 0) ++n;
+        return c;
+    }
+    size_t readBytes(char *out, size_t len){
+        size_t i = 0;
+        for (int c; i < len && (c = read()) >= 0; ++i) out[i] = (char)c;
+        return i;
+    }
+};
 
+/* The manifest's long strings, on the heap while it is checked (the feed
+ * task's stack has little to spare). */
+struct Strings { char url[200], sha[80], asig[140], asig_url[200], msig[140]; };
+bool check_manifest(JsonDocument &doc, const char *variant, const esp_partition_t *p, Strings *str);
+
+bool manifest(){
     const esp_partition_t *p = partition();
     const char *variant = !p ? "default" : p->size >= 0x25F000 ? "2-5mb-fs" : p->size <= 0x110000 ? "1mb-fs" : "default";
+    static const char *const plain[] = {"type", "device_model", "ota_track", "storage_security_profile", "version",
+                                        "signature_alg", "key_id", "rollback_epoch"};
+    static const char *const suffixed[] = {"url", "sha256", "size", "artifact_signature", "artifact_signature_url",
+                                           "manifest_signature"};
+    DynamicJsonDocument filter(512), doc(2048);
+    char k[48];
+    for (const char *key : plain) filter[key] = true;
+    for (const char *key : suffixed) {
+        filter[key] = true;
+        std::snprintf(k, sizeof k, "%s_%s", key, variant);
+        filter[(const char *)k] = true;                  /* copied into the filter */
+    }
+    unsigned status;
+    uint32_t retry;
+    bool parsed = false;
+    int stage = fw_https_get(Host, ManifestPath, nullptr, reinterpret_cast<const uint8_t *>(owner_tls_gts_r4),
+                             sizeof owner_tls_gts_r4, &status, &retry, [&](HttpBody &b){
+        if (b.status() != 200) { while (b.read() >= 0) {} return true; }
+        BodyStream in{&b};
+        parsed = !deserializeJson(doc, in, DeserializationOption::Filter(filter)) && !in.over;
+        while (b.read() >= 0) {}
+        return true;
+    });
+    if (stage || status != 200) { s_error = "manifest fetch failed"; return false; }
+    if (!parsed) { s_error = "manifest unreadable"; return false; }
+    Strings *str = static_cast<Strings *>(std::calloc(1, sizeof(Strings)));
+    if (!str) { s_error = "memory"; return false; }
+    bool ok = check_manifest(doc, variant, p, str);
+    std::free(str);
+    return ok;
+}
+
+bool check_manifest(JsonDocument &doc, const char *variant, const esp_partition_t *p, Strings *str){
     auto sfx = [&](const char *key, char *out, size_t cap){
         char k[48];
         std::snprintf(k, sizeof k, "%s_%s", key, variant);
-        const char *v = doc[k] | "";
+        const char *v = doc[(const char *)k] | "";
         if (!*v) v = doc[key] | "";
         std::snprintf(out, cap, "%s", v);
     };
@@ -226,15 +283,16 @@ bool manifest(){
         char k[48];
         for (const char *key : {"url", "sha256", "size", "artifact_signature", "manifest_signature"}) {
             std::snprintf(k, sizeof k, "%s_%s", key, variant);
-            if (doc[k].isNull()) { variant = "default"; break; }
+            if (doc[(const char *)k].isNull()) { variant = "default"; break; }
         }
     }
-    char url[200], sha[80], asig[140], asig_url[200], msig[140], size_s[16], epoch_s[16];
-    sfx("url", url, sizeof url);
-    sfx("sha256", sha, sizeof sha);
-    sfx("artifact_signature", asig, sizeof asig);
-    sfx("artifact_signature_url", asig_url, sizeof asig_url);
-    sfx("manifest_signature", msig, sizeof msig);
+    char *url = str->url, *sha = str->sha, *asig = str->asig, *asig_url = str->asig_url, *msig = str->msig;
+    char size_s[16], epoch_s[16];
+    sfx("url", url, sizeof str->url);
+    sfx("sha256", sha, sizeof str->sha);
+    sfx("artifact_signature", asig, sizeof str->asig);
+    sfx("artifact_signature_url", asig_url, sizeof str->asig_url);
+    sfx("manifest_signature", msig, sizeof str->msig);
     {
         char k[32];
         std::snprintf(k, sizeof k, "size_%s", variant);
@@ -357,6 +415,7 @@ bool check(const esp_partition_t *p){
         uint32_t n = s_m.size - at < Sector ? s_m.size - at : Sector;
         if (esp_partition_read(p, at, s_chunk, n) != ESP_OK) { s_error = "read back failed"; return false; }
         owner_sha256_update(&h, s_chunk, n);
+        if ((at / Sector) % 16 == 15) vTaskDelay(1);     /* 2.5 MiB of hashing: let the other tasks run */
     }
     owner_sha256_final(&h, digest);
     for (int i = 0; i < 32; ++i) std::snprintf(hex + 2 * i, 3, "%02x", digest[i]);
@@ -387,6 +446,7 @@ void finish(const esp_partition_t *p){
     char took[24];
     std::snprintf(took, sizeof took, "%us", (unsigned)((now_ms() - s_started_ms) / 1000));
     report("installed", took);
+    checked_now();
     s_next_ms = now_ms() + WeekMs;
 }
 
@@ -407,6 +467,16 @@ extern "C" void fw_vendor_images_step(bool enabled){
     }
     if (s_next_ms && (int32_t)(now - s_next_ms) < 0) return;
     if (std::time(nullptr) < 1700000000) return;          /* TLS needs the clock */
+    if (!s_week_checked) {                       /* checked less than a week ago (before a restart): wait for the rest */
+        s_week_checked = true;
+        uint32_t last = nvs_u32("fs_checked"), unix_now = (uint32_t)std::time(nullptr);
+        if (s_phase == Idle && !fw_assets_held() && last && unix_now >= last && unix_now - last < WeekMs / 1000) {
+            s_next_ms = now + (WeekMs / 1000 - (unix_now - last)) * 1000u;
+            s_state = "up_to_date";
+            nvs_get("fs_ver", s_installed, sizeof s_installed);
+            return;
+        }
+    }
 
     if (s_phase == Downloading) {
         if (piece(p)) {
@@ -427,6 +497,7 @@ extern "C" void fw_vendor_images_step(bool enabled){
     }
 
     s_state = "checking";
+    report("check_start", "");
     bool held = fw_assets_held(), healthy = false, has_42 = false;
     if (!held) installed(&healthy, &has_42);
     if (!s_mp && !(s_mp = static_cast<Manifest *>(std::calloc(1, sizeof(Manifest))))) {
@@ -450,6 +521,7 @@ extern "C" void fw_vendor_images_step(bool enabled){
         s_state = "up_to_date";
         s_error = "";
         free_manifest();
+        checked_now();
         s_next_ms = now_ms() + WeekMs;
         return;
     }

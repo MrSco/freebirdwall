@@ -2,6 +2,7 @@
 #include "community.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include "community_cache.h"
@@ -69,9 +70,10 @@ struct Target {
  * and given back after it, so between steps, and all through a game (no
  * steps), the phones' connections have it. With the heap short the step
  * waits (UPDATES.md "Network watchdog"). */
+constexpr size_t RowBytes = 4096;
 struct Work {
     StaticJsonDocument<4096> doc;
-    char row[4096];
+    char *row;                              /* RowBytes, its own block: the heap seldom has 8 KiB in one piece */
 };
 
 /* Everything the source keeps, allocated the first time it is chosen (about
@@ -196,7 +198,7 @@ void poll_positions(uint32_t now){
     fw_stats_begin();
     int stage = https_get(rq.host, rq.path, &status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
-        parsed = decode_adsb_stream({&body, body_byte}, s->work->doc, s->work->row, sizeof s->work->row, s->staging, opts);
+        parsed = decode_adsb_stream({&body, body_byte}, s->work->doc, s->work->row, RowBytes, s->staging, opts);
         return parsed == Result::Ok;
     });
     s->work->doc.clear();
@@ -299,7 +301,7 @@ bool callsign_fix(const char *cs, int *stage, unsigned *status){
     adsbfi_pace();
     *stage = https_get("opendata.adsb.fi", path, status, &retry, [&](HttpBody &body){
         if (body.status() != 200) { while (body.read() >= 0) {} return true; }
-        parsed = decode_adsb_stream({&body, body_byte}, s->work->doc, s->work->row, sizeof s->work->row, s->staging, opts);
+        parsed = decode_adsb_stream({&body, body_byte}, s->work->doc, s->work->row, RowBytes, s->staging, opts);
         return parsed == Result::Ok;
     });
     s->work->doc.clear();
@@ -791,8 +793,14 @@ extern "C" uint32_t fw_community_step(FwFeedFrame *frame, bool *good){
      * "Network watchdog"). Flights pause for a moment instead. */
     FwMemSnapshot m;
     fw_mem_snapshot(&m);
-    s->work = m.free_internal >= sizeof(Work) + 12288 && m.largest_internal >= sizeof(Work) + 2048
-                  ? new (std::nothrow) Work : nullptr;
+    /* Two blocks of about 4 KiB, not one of 8: on a wall up for a while the
+     * heap has the room but seldom 10 KiB in one piece (flights stopped for
+     * hours on a wall with 38 KiB free, largest block 8 to 10 KiB). */
+    s->work = nullptr;
+    if (m.free_internal >= sizeof(Work) + RowBytes + 12288 && m.largest_internal >= sizeof(Work) + 1024) {
+        s->work = new (std::nothrow) Work;
+        if (s->work && !(s->work->row = static_cast<char *>(std::malloc(RowBytes)))) { delete s->work; s->work = nullptr; }
+    }
     if (!s->work) {                                         /* the heap is short (phones): later */
         static uint32_t noted;
         if (!noted || now_ms() - noted >= 60000) { noted = now_ms() | 1; fw_mem_report("community_step_waits", nullptr); }
@@ -813,6 +821,7 @@ extern "C" uint32_t fw_community_step(FwFeedFrame *frame, bool *good){
     s->cache.display(s->config, s_logos, now_ms(), s->show);
     fw_community_frame(s->show, s_logos, frame);
     track_publish(frame, now_ms());
+    std::free(s->work->row);
     delete s->work;
     s->work = nullptr;
     *good = s->good;

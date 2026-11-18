@@ -408,11 +408,11 @@ static void community_tick(void){
  * phones as the community feed does: never during a game, and only with
  * their working memory and another 12 KiB to spare (UPDATES.md "Network
  * watchdog"). They simply wait for a later pass. */
-static bool room_for(size_t bytes){
+static bool room_for(size_t bytes, size_t biggest){
     FwMemSnapshot m;
     if (fw_games_active()) return false;
     fw_mem_snapshot(&m);
-    return m.free_internal >= bytes + 12288 && m.largest_internal >= bytes + 2048;
+    return m.free_internal >= bytes + 12288 && m.largest_internal >= biggest + 1024;
 }
 
 /* What the weather fetcher needs (weather.h), from the settings in force. */
@@ -447,11 +447,11 @@ static void feed_task(void *arg){
             FwWeatherWant want;
             bool images;
             weather_want(&want);
-            if (room_for(6144)) fw_weather_step(&want);       /* its JSON documents: about 6 KiB at most */
+            if (room_for(6144, 4096)) fw_weather_step(&want);  /* its JSON documents: about 6 KiB, 4 KiB the largest */
             xSemaphoreTake(s_lock, portMAX_DELAY);
             images = !s_display.has_display_config || s_display.vendor_images;
             xSemaphoreGive(s_lock);
-            if (room_for(8192)) fw_vendor_images_step(images); /* a check (about 8 KiB), or a piece of a download */
+            if (room_for(5120, 4096)) fw_vendor_images_step(images); /* a check (about 4 KiB), or a piece of a download (4 KiB) */
         }
         if (s_source == FW_SOURCE_COMMUNITY) { community_tick(); continue; }
         t0 = now_ms();

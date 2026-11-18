@@ -627,7 +627,7 @@ function pvSync(){if(!PV.mod||!st.work)return;var a=JSON.stringify(st.aliasWork|
  if(a!==PV.sentA){PV.sentA=a;pvCall(PV.mod.pv_aliases,a)}
  if(w!==PV.sent){PV.sent=w;pvCall(PV.mod.pv_settings,w)}
  pvNote()}
-function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();pvWeather();
+function pvFlights(){if(!PV.mod)return;PV.flightsAt=Date.now();if(get(st.work||{},'display_config.weather.enabled'))pvWeather();
  api('/api/flights').catch(function(){return null}).then(function(j){var live=!!(j&&j.flights&&j.flights.length),s=JSON.stringify(live?j:SAMPLE);
   PV.live=live;if(s!==PV.sentF){PV.sentF=s;pvCall(PV.mod.pv_flights,s)}pvNote()})}
 function pvLogos(){for(var i=0,p,k;i<8&&(p=PV.mod.pv_logo_wanted(i));i++){k=pvText(p);if(!PV.logos[k]){PV.logos[k]=1;pvLogo(k)}}}

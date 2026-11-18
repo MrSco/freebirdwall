@@ -29,6 +29,11 @@ size_t fw_log_read(size_t from, char *out, size_t cap);
 char *fw_log_buffer_take(size_t *cap);
 void fw_log_buffer_give(void);
 
+/* A line kept like the last crash (until the next crash or restart note
+ * replaces it): the network watchdog's restart (net_watch.c), so its reason
+ * survives the status lines after the restart. Also logged as usual. */
+void fw_log_keep(const char *line);
+
 /* One line written from the panic handler (panic_note.c): no lock, IRAM.
  * Also kept as the last crash. */
 void fw_log_panic(const char *line);
