@@ -497,7 +497,7 @@ uint8_t s_wx_layout, s_wx_nrow;
 char s_wx_icon[24];
 bool s_wx_on;                      /* the weather is what the panel shows */
 bool s_wx_icon_retry;              /* the PNG could not be decoded yet (the block was busy) */
-uint32_t s_wx_at, s_wx_t0, s_wx_raw_hash;
+uint32_t s_wx_at, s_wx_t0, s_wx_raw_hash, s_wx_retry_at;
 
 uint32_t fnv(const void *p, size_t n, uint32_t h){
     const uint8_t *b = static_cast<const uint8_t *>(p);
@@ -505,26 +505,27 @@ uint32_t fnv(const void *p, size_t n, uint32_t h){
     return h;
 }
 
-/* The vendor's icon at (4,6), from /images/weather/32/<name>.png; false when the
- * filesystem has none or the decoder is busy. */
-bool weather_png(const FwSurface *s, const char *name){
+/* Decodes the vendor's icon, /images/weather/32/<name>.png, into the logo
+ * slot: 1 done, 0 the filesystem has none (or it is bad), -1 the decoder is
+ * busy (try again later). Done before anything is cleared: the panel has no
+ * second buffer, so a slow decode between a clear and the drawing would show. */
+int weather_png(const char *name){
     char path[64];
     std::snprintf(path, sizeof path, "/images/weather/32/%s.png", name);
-    if (!(s_assets_mounted = fw_assets_mount_partition())) return false;
-    if (!fw_assets_exists(path)) return false;
+    if (!(s_assets_mounted = fw_assets_mount_partition())) return 0;
+    if (!fw_assets_exists(path)) return 0;
+    if (fw_logo_decoder_bytes() <= fw_big_bytes && fw_big_busy()) return -1;
     int n = fw_assets_read_file(path, s_logo_file, sizeof s_logo_file);
-    if (n <= 0) return false;
+    if (n <= 0) return 0;
     void *decoder = take_decoder();
-    if (!decoder) { s_wx_icon_retry = true; return false; }
+    if (!decoder) return -1;
     s_ahead_ready = false;                         /* the logo slots are about to change */
     s_shown_logo = &s_logo_a;
     s_logo_ok = false;
     s_logo_code[0] = 0;                            /* the next flight decodes its logo again */
     int rc = fw_logo_decode_box(decoder, s_logo_file, (size_t)n, 32, 32, &s_logo_a);
     fw_big_give();
-    if (rc != FW_LOGO_OK) return false;
-    fw_logo_draw_box(s, 4, 6, &s_logo_a);
-    return true;
+    return rc == FW_LOGO_OK ? 1 : 0;
 }
 
 void weather_release(){
@@ -551,7 +552,7 @@ bool weather_screen(const FwSurface *s, bool enter, bool between = false){
     uint32_t serial = fw_weather_store_copy(&s_wx);
     if (serial != s_wx_serial) s_wx_serial = serial;
     if (!fw_weather_valid(&s_wx) || fw_weather_age(&s_wx, now) > FW_WX_STALE_S) { weather_release(); return false; }
-    if (s_wx_on && !enter && !s_wx_icon_retry && now_ms - s_wx_at < 200) return true;
+    if (s_wx_on && !enter && now_ms - s_wx_at < 200) return true;
     s_wx_at = now_ms;
     uint32_t h = fnv(s_wx.raw, std::strlen(s_wx.raw), fnv(&s_wx.obs, sizeof s_wx.obs, 0x811c9dc5u));
     if (h != s_wx_raw_hash) { s_wx_raw_hash = h; s_wx_t0 = now_ms; }   /* a new METAR: technical page 1 */
@@ -566,17 +567,30 @@ bool weather_screen(const FwSurface *s, bool enter, bool between = false){
     ws.show_seconds = s_clock_config.show_seconds;
     ws.zone = s_clock_config.zone;
     fw_weather_frame(&s_wx, &ws, now, now_ms - s_wx_t0, &s_wx_frame);
-    bool full = enter || !s_wx_on || s_wx_icon_retry || s_wx_frame.layout != s_wx_layout ||
+    bool full = enter || !s_wx_on || s_wx_frame.layout != s_wx_layout ||
                 s_wx_frame.nrow != s_wx_nrow || std::strcmp(s_wx_frame.icon, s_wx_icon);
     if (full) {
-        s_wx_icon_retry = false;
+        /* The panel shows every pixel as it is written: decode first, then
+         * clear and draw at once. With the decoder busy the owned drawing
+         * shows, and only the icon's box changes when the PNG comes. */
+        int png = s_wx_frame.icon[0] ? weather_png(s_wx_frame.icon) : 0;
+        s_wx_icon_retry = png < 0;
+        s_wx_retry_at = now_ms;
         fw_clear(s);
-        bool png = s_wx_frame.icon[0] && weather_png(s, s_wx_frame.icon);
-        if (!png && s_wx_frame.icon[0]) fw_weather_icon_draw(s, 4, 6, s_wx_frame.icon);
+        if (png > 0) fw_logo_draw_box(s, 4, 6, &s_logo_a);
+        else if (s_wx_frame.icon[0]) fw_weather_icon_draw(s, 4, 6, s_wx_frame.icon);
         std::memset(s_wx_rows, 0, sizeof s_wx_rows);
         s_wx_layout = s_wx_frame.layout;
         s_wx_nrow = s_wx_frame.nrow;
         std::snprintf(s_wx_icon, sizeof s_wx_icon, "%s", s_wx_frame.icon);
+    } else if (s_wx_icon_retry && now_ms - s_wx_retry_at >= 1000) {
+        s_wx_retry_at = now_ms;
+        int png = weather_png(s_wx_icon);
+        s_wx_icon_retry = png < 0;
+        if (png > 0) {
+            fw_fill_rect(s, 4, 6, 32, 32, {0, 0, 0});
+            fw_logo_draw_box(s, 4, 6, &s_logo_a);
+        }
     }
     fw_weather_draw_rows(s, &s_wx_frame, s_wx_rows);   /* only the rows that changed */
     if (!s_wx_on) fw_mem_report("weather_shown", nullptr);
