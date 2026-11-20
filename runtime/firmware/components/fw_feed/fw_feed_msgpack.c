@@ -260,8 +260,20 @@ static void read_deltas(Rd *r){
     }
 }
 
-static void read_record(Rd *r, FwFlight *f){
+static double read_double_soft(Rd *r){
+    uint8_t t;
+    if (!need(r, 1)) return NAN;
+    t = *r->p;
+    if (t == 0xc0) { ++r->p; return NAN; }
+    if (t <= 0x7f || t >= 0xe0 || (t >= 0xca && t <= 0xd3)) return read_double(r);
+    skip(r, 1);
+    return NAN;
+}
+
+static void read_record(Rd *r, FwFlight *f, double *lat_out, double *lon_out){
     uint32_t n = read_map(r);
+    if (lat_out) *lat_out = NAN;
+    if (lon_out) *lon_out = NAN;
     for (uint32_t i = 0; i < n && !r->bad; ++i) {
         char key[12];
         read_str(r, key, sizeof key);
@@ -269,6 +281,8 @@ static void read_record(Rd *r, FwFlight *f){
         if (!strcmp(key, "icao")) read_str(r, f->icao, 8);
         else if (!strcmp(key, "cs")) read_str(r, f->cs, 12);
         else if (!strcmp(key, "reg")) { char reg[32]; read_str(r, reg, sizeof reg); clean_reg(reg); memcpy(f->reg, reg, 16); }
+        else if (!strcmp(key, "lat")) { double v = read_double_soft(r); if (lat_out) *lat_out = v; }
+        else if (!strcmp(key, "lon")) { double v = read_double_soft(r); if (lon_out) *lon_out = v; }
         else if (!strcmp(key, "alt_b")) f->alt_b = read_double(r);
         else if (!strcmp(key, "alt_g")) f->alt_g = read_double(r);
         else if (!strcmp(key, "vel")) f->vel = read_double(r);
@@ -391,9 +405,10 @@ int fw_feed_parse(const uint8_t *body, size_t len, FwFeedFrame *out, FwWeather *
             out->tracked = key[0] == 't';
             for (uint32_t k = 0; k < m && !r.bad; ++k) {
                 if (out->count < FW_FEED_MAX_FLIGHTS) {
-                    FwFlight *f = &out->flights[out->count++];
+                    int idx = out->count++;
+                    FwFlight *f = &out->flights[idx];
                     fw_flight_init(f);
-                    read_record(&r, f);
+                    read_record(&r, f, &out->lat[idx], &out->lon[idx]);
                 } else {
                     skip(&r, 1);
                 }

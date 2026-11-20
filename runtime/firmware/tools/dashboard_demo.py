@@ -69,11 +69,55 @@ def stats():
     hour, day = int(now // 3600), int(now // 86400)
     rnd = random.Random(7)
     hours = [[h, rnd.randint(4, 30) if 6 <= h % 24 <= 22 else rnd.randint(0, 3), 60] for h in range(hour - 47, hour + 1)]
-    top = [['JBU', 41], ['DAL', 33], ['AAL', 27], ['UAL', 12], ['RPA', 9]]   # ICAO codes, as the wall counts them
-    days = [[d, rnd.randint(140, 260), 1440, top if d == day else []] for d in range(day - 30, day + 1)]
+    airlines = [['DAL', 48], ['JBU', 41], ['AAL', 29], ['UAL', 18], ['RPA', 11], ['EJA', 7], ['SWA', 6], ['EDV', 5]]
+    types = [['A21N', 34], ['B738', 31], ['CRJ9', 26], ['E75L', 22], ['A320', 19], ['BCS3', 14]]
+    orig = [['JFK', 52], ['LGA', 34], ['BOS', 19], ['ATL', 16], ['ORD', 13], ['MIA', 11]]
+    dest = [['JFK', 49], ['LGA', 31], ['EWR', 21], ['MCO', 15], ['BOS', 14], ['LAX', 10]]
+    days = []
+    for d in range(day - 30, day + 1):
+        tot = rnd.randint(150, 270)
+        rk = int(tot * 0.72)
+        scale = tot / 180.0
+        al = [[k, max(1, int(v * scale * rnd.uniform(0.8, 1.2)))] for k, v in airlines]
+        tp = [[k, max(1, int(v * scale * rnd.uniform(0.8, 1.2)))] for k, v in types]
+        og = [[k, max(1, int(v * scale * rnd.uniform(0.8, 1.2)))] for k, v in orig]
+        ds = [[k, max(1, int(v * scale * rnd.uniform(0.8, 1.2)))] for k, v in dest]
+        days.append([d, tot, 1440, al, rk, tp, og, ds])
     days[-1][1] = sum(h[1] for h in hours if h[0] // 24 == day)
     days[-1][2] = (hour % 24 + 1) * 60
-    return {'hour': hour, 'day': day, 'offset': OFFSET_MIN, 'stats': {'hours': hours, 'days': days}}
+    days[-1][4] = int(days[-1][1] * 0.74)
+    # Synthetic glowing corridor heatmap around JFK (40x40)
+    grid = [0] * (40 * 40)
+    corridors = [((4, 34), (20, 20), 65), ((36, 8), (20, 20), 58), ((18, 2), (20, 20), 42),
+                 ((38, 26), (20, 20), 36), ((2, 16), (34, 32), 24), ((8, 38), (30, 4), 20)]
+    for (x0, y0), (x1, y1), weight in corridors:
+        for step in range(45):
+            t = step / 44.0
+            cx = int(round(x0 + (x1 - x0) * t))
+            cy = int(round(y0 + (y1 - y0) * t))
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < 40 and 0 <= ny < 40:
+                        w = weight if (dx == 0 and dy == 0) else weight // 3
+                        grid[ny * 40 + nx] = min(230, grid[ny * 40 + nx] + w)
+    cells = [[i, v] for i, v in enumerate(grid) if v]
+    unix_now = int(time.time())
+    rare = [
+        [unix_now - 1800, 3, 'A3ST', 'BGA142', 'F-GSTA', 'BGA', 'TLS', 'JFK'],
+        [unix_now - 7200, 2, 'A388', 'UAE201', 'A6-EEU', 'UAE', 'DXB', 'JFK'],
+        [unix_now - 19400, 2, 'B748', 'DLH400', 'D-ABYA', 'DLH', 'FRA', 'JFK'],
+        [unix_now - 41000, 1, 'B752', 'UAL1641', 'N14120', 'UAL', 'EWR', 'SFO'],
+    ]
+    return {
+        'hour': hour, 'day': day, 'offset': OFFSET_MIN,
+        'sync': {'configured': False, 'pending': False, 'ok': False, 'restored': False, 'status': 0, 'at': 0},
+        'stats': {
+            'hours': hours, 'days': days, 'rare': rare, 'rare_total': len(rare),
+            'heat': {'lat': 40.709, 'lon': -73.826, 'dlat': 0.19, 'dlon': 0.24, 'n': 40, 'scale': 1,
+                     'since': unix_now - 5 * 86400, 'pts': 4820, 'cells': cells},
+        },
+    }
 
 
 def sync():
@@ -148,6 +192,21 @@ class Handler(BaseHTTPRequestHandler):
             al = ''.join(c for c in self.path.partition('al=')[2].split('&')[0] if c.isalnum())
             logo = LOGOS / (al + '.png')
             return self.send(200, logo.read_bytes(), 'image/png') if al and logo.exists() else self.send(404, {})
+        if path == '/api/explore':
+            return self.send(200, {
+                'pending': False, 'ok': True, 'status': 200, 'at': int(time.time()),
+                'lat': state.get('ex_lat', 51.47), 'lon': state.get('ex_lon', -0.45), 'dist': state.get('ex_dist', 25),
+                'count': 6, 'ac': [
+                    [state.get('ex_lat', 51.47) + 0.05, state.get('ex_lon', -0.45) - 0.08, 92, 'A388', 'BAW11', 'G-XLEA', 8400],
+                    [state.get('ex_lat', 51.47) - 0.04, state.get('ex_lon', -0.45) + 0.06, 270, 'A35K', 'VIR45', 'G-VLUX', 12500],
+                    [state.get('ex_lat', 51.47) + 0.09, state.get('ex_lon', -0.45) + 0.03, 185, 'B789', 'AAL101', 'N824AN', 16200],
+                    [state.get('ex_lat', 51.47) - 0.07, state.get('ex_lon', -0.45) - 0.05, 45, 'A21N', 'EZY812', 'G-UZHA', 6800],
+                    [state.get('ex_lat', 51.47) + 0.02, state.get('ex_lon', -0.45) + 0.11, 265, 'B738', 'RYR402', 'EI-DCL', 11000],
+                    [state.get('ex_lat', 51.47) - 0.02, state.get('ex_lon', -0.45) - 0.02, 110, 'B748', 'CLX742', 'LX-VCJ', 21000],
+                ],
+            })
+        if path == '/api/stats/checkpoint':
+            return self.send(200, b'FWANdemo-checkpoint-bytes', 'application/octet-stream')
         if path in answers:
             return self.send(200, answers[path]())
         self.send(404, {'error': 'not here'})
@@ -157,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(n) if n else b''
 
     def do_POST(self):
-        path, _ = self.path.split('?')[0], self.body()
+        path, raw = self.path.split('?')[0], self.body()
         if path == '/api/pair/start':
             state['code_until'] = time.time() + 120
             return self.send(200, {'seconds': 120})
@@ -169,6 +228,16 @@ class Handler(BaseHTTPRequestHandler):
                                    'changed': 0, 'status': 200})
         if path == '/api/games':
             return self.send(200, {'in_rotation': False, 'qr_showing': True, 'game': 'none', 'players': 0})
+        if path == '/api/explore':
+            j = json.loads(raw or b'{}')
+            state['ex_lat'] = j.get('lat', 51.47)
+            state['ex_lon'] = j.get('lon', -0.45)
+            state['ex_dist'] = j.get('dist', 25)
+            return self.send(202, {'pending': True})
+        if path == '/api/stats/checkpoint':
+            return self.send(200, {'ok': True})
+        if path == '/api/stats/sync':
+            return self.send(202, {'configured': True, 'pending': False, 'ok': True, 'status': 200, 'at': int(time.time())})
         self.send(200, {})
 
     def do_PUT(self):

@@ -42,6 +42,7 @@
 
 #include "weather.h"
 #include "vendor_images.h"
+#include "explore.h"
 
 #define HOST "api.theflightwall.com"
 #define POLL_MS 10000
@@ -203,6 +204,7 @@ static void fix_step(void){
         ++s_serial;
     }
     xSemaphoreGive(s_lock);
+    if (!rc) fw_stats_position(hex, NULL, NULL, lat, lon);
     if (rc) ++s_fix_fails;
     if (++s_fixes <= 3 || s_fixes % 50 == 0 || (rc && rc != 11)) {
         char extra[96];
@@ -299,9 +301,14 @@ static int poll_once(int *status, size_t *bytes){
      * this minute watched. A tracked-flight answer is not nearby traffic. */
     if (fw_stats_begin()) {
         if (!s_parse.tracked)
-            for (int i = 0; i < s_parse.count; ++i)
-                fw_stats_flight(s_parse.flights[i].icao, s_parse.flights[i].cs, s_parse.flights[i].reg,
-                                s_parse.flights[i].al_code);
+            for (int i = 0; i < s_parse.count; ++i) {
+                const FwFlight *fl = &s_parse.flights[i];
+                const char *orig = fl->orig_iata[0] ? fl->orig_iata : fl->orig_icao;
+                const char *dest = fl->dest_iata[0] ? fl->dest_iata : fl->dest_icao;
+                bool has_pos = !isnan(s_parse.lat[i]) && !isnan(s_parse.lon[i]);
+                fw_stats_flight_ex(fl->icao, fl->cs, fl->reg, fl->al_code, fl->ac_type,
+                                   orig, dest, has_pos, s_parse.lat[i], s_parse.lon[i]);
+            }
         fw_stats_covered();
     }
 done:
@@ -334,6 +341,27 @@ static void read_areas(const char *doc){
     memcpy(s_areas, areas, sizeof areas[0] * (size_t)n);
     s_area_count = n;
     xSemaphoreGive(s_lock);
+    if (n == 1) {
+        fw_stats_set_area(areas[0].lat, areas[0].lon, areas[0].radius_km);
+    } else if (n > 1) {
+        /* Enclosing box covering ALL configured watch areas (padded 15%). */
+        double lat_min = 90.0, lat_max = -90.0, lon_min = 180.0, lon_max = -180.0;
+        for (int i = 0; i < n; ++i) {
+            double coslat = cos((double)areas[i].lat * (3.14159265358979323846 / 180.0));
+            double dlat = ((double)areas[i].radius_km * 1.15) / 111.32;
+            double dlon = ((double)areas[i].radius_km * 1.15) / (111.32 * (coslat < 0.05 ? 0.05 : coslat));
+            if (areas[i].lat - dlat < lat_min) lat_min = areas[i].lat - dlat;
+            if (areas[i].lat + dlat > lat_max) lat_max = areas[i].lat + dlat;
+            if (areas[i].lon - dlon < lon_min) lon_min = areas[i].lon - dlon;
+            if (areas[i].lon + dlon > lon_max) lon_max = areas[i].lon + dlon;
+        }
+        /* Keep sharp resolution for regional clusters (up to ~600 km); if areas
+         * are on opposite sides of the planet, fall back to the first area. */
+        if (lat_max - lat_min <= 6.0 && lon_max - lon_min <= 8.0)
+            fw_stats_set_bounds(lat_min, lat_max, lon_min, lon_max);
+        else
+            fw_stats_set_area(areas[0].lat, areas[0].lon, areas[0].radius_km);
+    }
 }
 
 static void configure(void){
@@ -342,10 +370,12 @@ static void configure(void){
     FwFeedDisplay d;
     FwCommunityInfo info = {0};
     FwFlightSource src = doc ? fw_feed_source(doc) : FW_SOURCE_VENDOR;
-    char extra[224];
+    char extra[224], stats_url[100];
     bool shown, ok = false, switched;
     s_store_serial = fw_store_serial();
     s_follow = doc ? fw_feed_follow_app(doc) : true;
+    fw_feed_stats_url(doc, stats_url, sizeof stats_url);
+    fw_stats_set_sync_url(stats_url);
     shown = doc && fw_feed_display(doc, &d);
     read_areas(doc);
     if (shown && src == FW_SOURCE_COMMUNITY) ok = fw_community_configure(doc, &info);   /* this task only */
@@ -452,6 +482,8 @@ static void feed_task(void *arg){
             images = !s_display.has_display_config || s_display.vendor_images;
             xSemaphoreGive(s_lock);
             if (room_for(5120, 4096)) fw_vendor_images_step(images); /* a check (about 4 KiB), or a piece of a download (4 KiB) */
+            if (room_for(7168, 6144)) fw_explore_step();             /* on-demand Explore anywhere via adsb.fi */
+            if (room_for(2048, 2048)) fw_stats_sync_step();          /* optional LAN/NAS checkpoint backup/restore */
         }
         if (s_source == FW_SOURCE_COMMUNITY) { community_tick(); continue; }
         t0 = now_ms();

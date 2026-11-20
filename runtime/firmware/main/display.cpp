@@ -191,17 +191,22 @@ void load_logo(const char *key){
     fw_big_want(false);
 }
 
-/* While a flight shows: the next flight's logo into the spare slot. */
+/* While a flight shows: eagerly pre-decode the next flight's logo into the
+ * spare slot so cycling between flights never pauses or draws a blank logo. */
 void logo_ahead(const FwFlight *next){
-    if (!s_logo_waited || !next || s_logo_pending) return;
+    if (!next || s_logo_pending) return;
     char key[48];
     std::snprintf(key, sizeof key, "%s", logo_key(next));
     if (!std::strcmp(key, s_logo_code)) return;                    /* the same logo stays */
     if (s_ahead_ready && !std::strcmp(s_ahead_code, key)) return;
-    if (!s_logo_b && !(s_logo_b = static_cast<FwLogo *>(heap_caps_malloc(sizeof(FwLogo), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)))) {
-        fw_mem_report("logo_spare_alloc_failed", nullptr);
-        s_logo_waited = false;                      /* do without; don't try every tick */
-        return;
+    if (!s_logo_b) {
+        FwMemSnapshot m;
+        fw_mem_snapshot(&m);
+        if (m.free_internal < sizeof(FwLogo) + 16384 || m.largest_internal < sizeof(FwLogo) + 2048) return;
+        if (!(s_logo_b = static_cast<FwLogo *>(heap_caps_malloc(sizeof(FwLogo), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)))) {
+            fw_mem_report("logo_spare_alloc_failed", nullptr);
+            return;
+        }
     }
     if (fw_big_busy()) { fw_big_want(true); return; }
     s_ahead_ready = false;                          /* the spare slot is about to change */
@@ -211,6 +216,45 @@ void logo_ahead(const FwFlight *next){
     s_ahead_ok = r > 0;
     std::snprintf(s_ahead_code, sizeof s_ahead_code, "%s", key);
     s_ahead_ready = true;
+}
+
+/* Draws a full card into a temporary 16 KiB RGB565 frame inside the shared
+ * block (when free) and writes horizontal runs directly over the panel —
+ * eliminating any blank flash between fw_clear() and drawing if a higher-
+ * priority task preempts or an alias mutex waits. Falls back to direct draw
+ * when the block is busy. */
+template <class Fn>
+void draw_atomic(const FwSurface *panel, Fn draw){
+    uint8_t *big = fw_big_take(0);
+    if (!big || fw_big_bytes < (size_t)Width * Height * sizeof(uint16_t)) {
+        if (big) fw_big_give();
+        draw(panel);
+        return;
+    }
+    uint16_t *frame = reinterpret_cast<uint16_t *>(big);
+    FwCanvas cv;
+    cv.width = Width;
+    cv.height = Height;
+    cv.frame = frame;
+    cv.shown = nullptr;
+    cv.valid = false;
+    std::memset(frame, 0, (size_t)Width * Height * sizeof(uint16_t));
+    FwSurface off = fw_canvas_surface(&cv);
+    draw(&off);
+    for (int y = 0; y < Height; ++y) {
+        const uint16_t *row = frame + y * Width;
+        int x = 0;
+        while (x < Width) {
+            uint16_t c = row[x];
+            int run = 1;
+            while (x + run < Width && row[x + run] == c) ++run;
+            FwRgb rgb = fw_rgb888(c);
+            if (run > 1) panel->fill(panel->ctx, x, y, run, 1, rgb);
+            else panel->pixel(panel->ctx, x, y, rgb);
+            x += run;
+        }
+    }
+    fw_big_give();
 }
 
 void load_demo_logo(){ load_logo(logo_key("AAL", nullptr, nullptr)); }
@@ -617,9 +661,11 @@ void live_empty(const FwSurface *s, bool enter){
 void live_tracked_draw(const FwSurface *s){
     const FwFlight *f = &s_live.flights[s_trk_flight];
     if (std::strcmp(s_logo_code, logo_key(f)) != 0) load_logo(logo_key(f));
-    fw_screen_tracked(s, &s_live_settings, f, s_trk_pages[s_trk_page_i], (int64_t)std::time(nullptr),
-                      shown_logo());
-    fw_screen_frame(s, &s_live_frame);
+    draw_atomic(s, [&](const FwSurface *dst){
+        fw_screen_tracked(dst, &s_live_settings, f, s_trk_pages[s_trk_page_i], (int64_t)std::time(nullptr),
+                          shown_logo());
+        fw_screen_frame(dst, &s_live_frame);
+    });
     card_drawn();
 }
 
@@ -696,6 +742,9 @@ void break_cancel(){
     s_break = BreakNone;
 }
 
+uint32_t s_logo_hold_at;
+bool s_live_card_shown;
+
 void live_rotation_tick(const FwSurface *s){
     const FwFlight *f;
     int more;
@@ -713,21 +762,66 @@ void live_rotation_tick(const FwSurface *s){
             (int32_t)(now - s_break_last) >= (int32_t)cycle &&
             (redraw || slots < 2) && break_next(s, BreakNone, now)) {
             s_live_rotation.dirty = true;            /* drawn when the break ends */
+            s_logo_hold_at = 0;
             return;
         }
     }
-    if (s_logo_pending && !fw_big_busy()) s_live_redraw = true;   /* the logo can be decoded now */
-    if (!redraw && !s_live_redraw) { logo_ahead(fw_rotation_next(&s_live_rotation)); card_scroll(s); return; }
-    s_live_redraw = false;
-    s_live_frame.indicator = s_live_rotation.indicator;
+    /* If a fallback draw left only the logo pending, paint the logo box in
+     * place once the decoder is free instead of clearing the whole card. */
+    if (!redraw && !s_live_redraw && s_logo_pending && !fw_big_busy() && show == FW_SHOW_FLIGHT && f) {
+        load_logo(logo_key(f));
+        if (!s_logo_pending && shown_logo()) {
+            const FwElement &box = fw_layout_mini_default[0];
+            if (std::strcmp(s_live_settings.layout, "NO_LOGO") != 0)
+                fw_logo_draw(s, box.x, box.y, box.w, box.h, shown_logo());
+            fw_screen_frame(s, &s_live_frame);
+        }
+        card_scroll(s);
+        return;
+    }
+    if (!redraw && !s_live_redraw) {
+        s_logo_hold_at = 0;
+        logo_ahead(fw_rotation_next(&s_live_rotation));
+        card_scroll(s);
+        return;
+    }
     if (show == FW_SHOW_FLIGHT && f) {
-        if (std::strcmp(s_logo_code, logo_key(f)) != 0) load_logo(logo_key(f));
-        fw_screen_flight(s, &s_live_settings, f, shown_logo());
-        fw_screen_frame(s, &s_live_frame);
+        const char *k = logo_key(f);
+        bool need_decode = std::strcmp(s_logo_code, k) != 0 && !(s_ahead_ready && !std::strcmp(s_ahead_code, k));
+        if (need_decode && fw_big_busy() && s_live_card_shown) {
+            if (!s_logo_hold_at) s_logo_hold_at = now ? now : 1;
+            if (now - s_logo_hold_at < 1200) {
+                /* Hold the previous clean card briefly while TLS releases the
+                 * shared block, instead of flashing a half-drawn card. */
+                fw_big_want(true);
+                s_live_redraw = true;
+                card_scroll(s);
+                return;
+            }
+        }
+        s_logo_hold_at = 0;
+        s_live_redraw = false;
+        s_live_frame.indicator = s_live_rotation.indicator;
+        if (std::strcmp(s_logo_code, k) != 0) load_logo(k);
+        draw_atomic(s, [&](const FwSurface *dst){
+            fw_screen_flight(dst, &s_live_settings, f, shown_logo());
+            fw_screen_frame(dst, &s_live_frame);
+        });
+        s_live_card_shown = true;
         card_drawn();
         card_hold(&s_live_rotation);
+        logo_ahead(fw_rotation_next(&s_live_rotation));
     } else if (show == FW_SHOW_TOO_MANY) {
-        fw_screen_too_many(s, &s_live_frame, more);
+        s_logo_hold_at = 0;
+        s_live_redraw = false;
+        s_live_frame.indicator = s_live_rotation.indicator;
+        draw_atomic(s, [&](const FwSurface *dst){
+            fw_screen_too_many(dst, &s_live_frame, more);
+        });
+        s_live_card_shown = true;
+    } else {
+        s_logo_hold_at = 0;
+        s_live_redraw = false;
     }
 }
 
@@ -758,6 +852,8 @@ bool live_step(const FwSurface *s, bool enter){
     if (mode != LiveEmpty && s_wxs && s_break != BreakWeather) weather_release();   /* flights again: the weather's memory back */
     if (mode != s_live_mode || enter) {
         s_live_mode = mode;
+        s_live_card_shown = false;
+        s_logo_hold_at = 0;
         if (mode == LiveRotation) {
             fw_rotation_set_list(&s_live_rotation, s_live.flights, s_live.count, s_live.overflow);
             s_live_redraw = true;
@@ -886,9 +982,11 @@ void sync_draw(const FwSurface *s, uint32_t now){
         const char *code = s_sync_has_live && s_sync_live.al_code[0] ? s_sync_live.al_code : sync_logo_code(&s_sv.active);
         if (std::strcmp(s_logo_code, logo_key(code, nullptr, nullptr)) != 0) load_logo(logo_key(code, nullptr, nullptr));
         FwSyncLive lv = {s_sync_live.dep, s_sync_live.arr, nullptr, nullptr, s_sync_live.prog};
-        fw_screen_sync_active(s, &s_live_settings, &s_sv.active, s_sync_has_live ? &s_sync_live : nullptr,
-                              s_sync_has_live ? &lv : nullptr, s_sv.message, page, s_sync_sub, t, shown_logo());
-        fw_screen_frame(s, &s_live_frame);
+        draw_atomic(s, [&](const FwSurface *dst){
+            fw_screen_sync_active(dst, &s_live_settings, &s_sv.active, s_sync_has_live ? &s_sync_live : nullptr,
+                                  s_sync_has_live ? &lv : nullptr, s_sv.message, page, s_sync_sub, t, shown_logo());
+            fw_screen_frame(dst, &s_live_frame);
+        });
     }
     s_sync_drawn = true;
     (void)now;

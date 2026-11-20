@@ -253,6 +253,12 @@ def test_owned(exe, tmp):
         check(d['owned_config'].get('heartbeat_enabled') == enabled, 'owned: heartbeat saved/reset %r' % d)
         check(d['owned_config']['flight_source'] == 'community', 'owned: heartbeat keeps the other settings')
     bad(exe, tmp, {'owned_config': {'heartbeat_enabled': 'false'}}, 'owned_config.heartbeat_enabled', 'owned: heartbeat is a bool')
+    d = ok(exe, tmp, {'owned_config': {'stats_url': 'http://192.168.1.50:8090'}}, 'owned: stats_url valid', current=cur)
+    check(d['owned_config'].get('stats_url') == 'http://192.168.1.50:8090', 'owned: stats_url saved')
+    d = ok(exe, tmp, {'owned_config': {'stats_url': ''}}, 'owned: stats_url empty', current=cur)
+    check(d['owned_config'].get('stats_url') == '', 'owned: stats_url cleared')
+    bad(exe, tmp, {'owned_config': {'stats_url': 'https://example.com'}}, 'owned_config.stats_url', 'owned: stats_url must be http://')
+    bad(exe, tmp, {'owned_config': {'stats_url': 'http://bad host'}}, 'owned_config.stats_url', 'owned: stats_url no spaces')
     bad(exe, tmp, {'owned_config': {'colour': 1}}, 'owned_config.colour', 'owned: unknown key')
     bad(exe, tmp, {'owned_config': []}, 'owned_config', 'owned: not an object')
 

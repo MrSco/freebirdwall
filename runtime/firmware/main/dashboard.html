@@ -135,6 +135,47 @@ details.adv[open] summary{margin-bottom:8px}
 @media (max-width:600px){.map{height:300px}}
 .map .leaflet-control-attribution{font-size:11px}
 .pin{background:#fff;border:3px solid var(--accent);border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.an-top{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.an-loc{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px}
+.an-loc b{color:var(--text)}
+.an-sub{display:flex;gap:6px;flex-wrap:wrap}
+.an-sub button{flex:1 1 70px;min-height:38px;border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:6px 12px;cursor:pointer;font-weight:600;font-size:14px}
+.an-sub button[aria-pressed=true]{background:var(--text);color:var(--bg);border-color:var(--text)}
+.an-map{height:320px;border-radius:12px;border:1px solid var(--line);background:#07080d;overflow:hidden;position:relative;z-index:0}
+.an-map .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.68) contrast(1.12) saturate(.45)}
+@media (max-width:600px){.an-map{height:270px}}
+.an-scale{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12px;color:var(--dim)}
+.an-grad{flex:1;height:7px;border-radius:99px;background:linear-gradient(90deg,#2a0b5e 0%,#7a1fa2 25%,#d8347a 52%,#fb8c2c 78%,#ffe46b 92%,#fffbe0 100%)}
+.an-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.an-meta>div{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+.an-meta small{display:block;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.an-meta b{display:block;font-size:14px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.an-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}
+@media (min-width:600px){.an-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.an-kpi{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.an-kpi small{display:block;color:var(--dim);font-size:12px}
+.an-kpi .big{font-size:26px;margin-top:2px}
+.an-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.an-row{display:grid;grid-template-columns:22px auto 1fr auto;gap:8px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.an-row:first-child{border-top:0;padding-top:2px}
+.an-rk{color:var(--dim);font-size:13px;font-variant-numeric:tabular-nums;text-align:right}
+.an-ico{width:28px;height:28px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:11px;font-weight:700;color:var(--dim)}
+.an-ico img{width:100%;height:100%;object-fit:contain;background:#0a0c12}
+.an-info{min-width:0}
+.an-name{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.an-subt{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.an-val{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.an-val b{display:block;font-size:14px}
+.an-val small{display:block;color:var(--dim);font-size:12px}
+.an-barw{grid-column:2/-1;height:5px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.an-barf{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#6ee7f5)}
+.an-rare{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.an-rare li{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.an-badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.an-b3{background:rgba(255,190,40,.18);color:#ffd15c;border:1px solid rgba(255,190,40,.45)}
+.an-b2{background:rgba(205,90,255,.18);color:#e49bff;border:1px solid rgba(205,90,255,.45)}
+.an-b1{background:rgba(46,197,216,.16);color:#6be3f2;border:1px solid rgba(46,197,216,.4)}
+.an-presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -690,11 +731,87 @@ function pvTick(){if(!PV.mod||!PV.el||!PV.el.isConnected||document.hidden)return
 setInterval(pvTick,40);
 
 /* ------------------------------------------------------------ render */
-/* ------------------------------------------------------------ Stats */
+/* ------------------------------------------------------------ Stats / Plus Analytics */
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function dayName(d){var t=new Date(d*86400000);return t.getUTCDate()+' '+MON[t.getUTCMonth()]}
+function dayName(d){var t=new Date(d*86400000);return MON[t.getUTCMonth()]+' '+t.getUTCDate()}
 function hourName(h){var x=((h%24)+24)%24;return (x%12||12)+(x<12?'a':'p')}
-function viewStats(){return '<div class="grid two" id="stats"><section class="card"><p class="muted" style="margin:0">Loading…</p></section></div>'}
+var AL_NAMES={DAL:'Delta Air Lines',AAL:'American Airlines',UAL:'United Airlines',JBU:'JetBlue Airways',SWA:'Southwest Airlines',
+ RPA:'Republic Airways',EDV:'Endeavor Air',SKW:'SkyWest Airlines',EJA:'NetJets',ACA:'Air Canada',BAW:'British Airways',
+ AFR:'Air France',DLH:'Lufthansa',KLM:'KLM Royal Dutch',UAE:'Emirates',QTR:'Qatar Airways',NKS:'Spirit Airlines',
+ FFT:'Frontier Airlines',ASA:'Alaska Airlines',UPS:'UPS Airlines',FDX:'FedEx Express',GTI:'Atlas Air',LXJ:'Flexjet',
+ ENY:'Envoy Air',JIA:'PSA Airlines',PDT:'Piedmont Airlines',ASH:'Mesa Airlines',GJS:'GoJet Airlines',SCX:'Sun Country',
+ HAL:'Hawaiian Airlines',WJA:'WestJet',RYR:'Ryanair',EZY:'easyJet',SWR:'SWISS',IBE:'Iberia',THY:'Turkish Airlines',
+ ANA:'All Nippon Airways',JAL:'Japan Airlines',CPA:'Cathay Pacific',SIA:'Singapore Airlines',QFA:'Qantas',
+ VIR:'Virgin Atlantic',EIN:'Aer Lingus',TAP:'TAP Air Portugal',SAS:'SAS',FIN:'Finnair',AUA:'Austrian Airlines',
+ LOT:'LOT Polish',AMX:'Aeromexico',AVA:'Avianca',CMP:'Copa Airlines',LAN:'LATAM',VOI:'Volaris',VIV:'VivaAerobus',
+ POE:'Porter Airlines',MXY:'Breeze Airways',VXP:'Avelo Airlines',AAY:'Allegiant Air',BGA:'Airbus Transport',CLX:'Cargolux'};
+var AC_NAMES={B738:'737-800',B38M:'737 MAX 8',B39M:'737 MAX 9',B739:'737-900',B737:'737-700',B736:'737-600',
+ A320:'A320',A20N:'A320neo',A321:'A321',A21N:'A321neo',A319:'A319',A318:'A318',BCS1:'A220-100',BCS3:'A220-300',
+ CRJ2:'CRJ200',CRJ7:'CRJ700',CRJ9:'CRJ900',E75L:'E-175L',E75S:'E-175S',E170:'E-170',E190:'E-190',E195:'E-195',
+ E145:'ERJ-145',E290:'E190-E2',E295:'E195-E2',B752:'757-200',B753:'757-300',B762:'767-200',B763:'767-300',B764:'767-400',
+ B772:'777-200',B77W:'777-300ER',B77L:'777-200LR',B788:'787-8',B789:'787-9',B78X:'787-10',B744:'747-400',B748:'747-8',
+ B74L:'747SP',BLCF:'747 Dreamlifter',A332:'A330-200',A333:'A330-300',A338:'A330-800neo',A339:'A330-900neo',A343:'A340-300',
+ A346:'A340-600',A359:'A350-900',A35K:'A350-1000',A388:'A380-800',A3ST:'A300-600ST Beluga',A337:'BelugaXL',A306:'A300-600',
+ MD11:'MD-11',B712:'717-200',A124:'An-124 Ruslan',A225:'An-225 Mriya',C17:'C-17 Globemaster',C5M:'C-5M Super Galaxy',
+ C130:'C-130 Hercules',C30J:'C-130J Super Hercules',K35R:'KC-135 Stratotanker',VC25:'VC-25A Air Force One',V22:'V-22 Osprey',
+ B52:'B-52 Stratofortress',U2:'U-2 Dragon Lady',DC3:'DC-3',P8:'P-8 Poseidon',C172:'Cessna 172',SR22:'Cirrus SR22',
+ PC12:'Pilatus PC-12',PC24:'Pilatus PC-24',C56X:'Citation Excel',C68A:'Citation Latitude',CL35:'Challenger 350',
+ CL60:'Challenger 600',GLF5:'Gulfstream G550',GLF6:'Gulfstream G650',G700:'Gulfstream G700',GLEX:'Global Express',
+ GL7T:'Global 7500',E55P:'Phenom 300',HDJT:'HondaJet',DH8D:'Dash 8 Q400',AT76:'ATR 72-600'};
+var AP_DB={JFK:['New York JFK',40.6413,-73.7781],LGA:['New York LaGuardia',40.7769,-73.874],EWR:['Newark Liberty',40.6895,-74.1745],
+ TEB:['Teterboro',40.8501,-74.0608],BOS:['Boston Logan',42.3656,-71.0096],BDL:['Bradley Intl',41.9389,-72.6832],
+ PHL:['Philadelphia Intl',39.8744,-75.2424],DCA:['Reagan National',38.8512,-77.0402],IAD:['Washington Dulles',38.9531,-77.4565],
+ BWI:['Baltimore/Washington',39.1774,-76.6684],CLT:['Charlotte Douglas',35.214,-80.9431],ATL:['Atlanta Hartsfield',33.6407,-84.4277],
+ MCO:['Orlando Intl',28.4312,-81.3081],MIA:['Miami Intl',25.7959,-80.287],FLL:['Fort Lauderdale',26.0742,-80.1506],
+ PBI:['Palm Beach Intl',26.6832,-80.0956],TPA:['Tampa Intl',27.9755,-82.5332],ORD:['Chicago O’Hare',41.9742,-87.9073],
+ MDW:['Chicago Midway',41.7868,-87.7522],DTW:['Detroit Metro',42.2162,-83.3554],MSP:['Minneapolis–St. Paul',44.8848,-93.2223],
+ DFW:['Dallas/Fort Worth',32.8998,-97.0403],IAH:['Houston Intercontinental',29.9902,-95.3368],AUS:['Austin-Bergstrom',30.1975,-97.6664],
+ DEN:['Denver Intl',39.8561,-104.6737],PHX:['Phoenix Sky Harbor',33.4352,-112.0101],LAS:['Las Vegas Harry Reid',36.084,-115.1537],
+ SLC:['Salt Lake City',40.7899,-111.9791],LAX:['Los Angeles Intl',33.9416,-118.4085],SFO:['San Francisco Intl',37.6213,-122.379],
+ OAK:['Oakland Intl',37.7126,-122.2197],SJC:['San Jose Intl',37.3639,-121.9289],SAN:['San Diego Intl',32.7338,-117.1933],
+ SEA:['Seattle-Tacoma',47.4502,-122.3088],PDX:['Portland Intl',45.5898,-122.5951],HNL:['Honolulu Intl',21.3187,-157.9225],
+ YYZ:['Toronto Pearson',43.6777,-79.6248],YUL:['Montréal-Trudeau',45.4706,-73.7408],YVR:['Vancouver Intl',49.1967,-123.1815],
+ LHR:['London Heathrow',51.47,-0.4543],LGW:['London Gatwick',51.1537,-0.1821],CDG:['Paris Charles de Gaulle',49.0097,2.5479],
+ AMS:['Amsterdam Schiphol',52.3105,4.7683],FRA:['Frankfurt',50.0379,8.5622],MUC:['Munich',48.3537,11.775],
+ MAD:['Madrid Barajas',40.4983,-3.5676],BCN:['Barcelona El Prat',41.2974,2.0833],FCO:['Rome Fiumicino',41.8003,12.2389],
+ ZRH:['Zurich',47.4582,8.5555],DUB:['Dublin',53.4264,-6.2499],IST:['Istanbul',41.2753,28.7519],
+ DXB:['Dubai Intl',25.2532,55.3657],DOH:['Doha Hamad',25.2731,51.6081],SIN:['Singapore Changi',1.3644,103.9915],
+ HKG:['Hong Kong Intl',22.308,113.9185],HND:['Tokyo Haneda',35.5494,139.7798],NRT:['Tokyo Narita',35.772,140.3929],
+ ICN:['Seoul Incheon',37.4602,126.4407],SYD:['Sydney Kingsford Smith',-33.9399,151.1753],SJU:['San Juan Luis Muñoz',18.4394,-66.0018],
+ CUN:['Cancún Intl',21.0365,-86.8771],MEX:['Mexico City',19.4361,-99.0719],BNA:['Nashville Intl',36.1263,-86.6774],
+ RDU:['Raleigh-Durham',35.8801,-78.788],TLS:['Toulouse-Blagnac',43.6291,1.3638],HAM:['Hamburg',53.6304,9.9882]};
+var RARE_JS={A124:3,A225:3,A3ST:3,A337:3,BLCF:3,B74L:3,B74S:3,C5M:3,C5:3,VC25:3,E4:3,B52:3,B2:3,B1:3,U2:3,V22:3,CONC:3,L101:3,DC10:3,DC3:3,B722:3,
+ A388:2,B744:2,B748:2,A346:2,A343:2,MD11:2,A306:2,B753:2,C17:2,C130:2,C30J:2,K35R:2,P8:2,F15:2,F16:2,F18:2,F35:2,G700:2,A400:2,IL76:2,
+ B752:1,B764:1,A35K:1,B77L:1,B78X:1,B712:1,BCS1:1,E295:1,HDJT:1,PC24:1,GL7T:1};
+var RARE_LBL=['','Notable','Very rare','One of a kind'];
+var AN={period:'today',sub:'overview',apDir:'arr',picker:false,data:null,map:null,canvas:null,mapEl:null,areasLayer:null,logos:{},
+ areaIdx:-1,ex:null,exBusy:false,exWatch:false,exTimer:0,exPts:[]};
+var EX_PRESETS=[['New York JFK',40.6413,-73.7781,25],['London LHR',51.47,-0.4543,25],['San Francisco SFO',37.6213,-122.379,25],
+ ['Tokyo HND',35.5494,139.7798,30],['Dubai DXB',25.2532,55.3657,30],['Paris CDG',49.0097,2.5479,25]];
+
+function havKm(a1,o1,a2,o2){var R=6371,k=Math.PI/180,da=(a2-a1)*k,do_=(o2-o1)*k,
+ s=Math.sin(da/2)*Math.sin(da/2)+Math.cos(a1*k)*Math.cos(a2*k)*Math.sin(do_/2)*Math.sin(do_/2);return 2*R*Math.atan2(Math.sqrt(s),Math.sqrt(1-s))}
+function apInfo(code){var c=String(code||'').toUpperCase(),i3=c.length===4&&c[0]==='K'?c.slice(1):c;
+ var al=st.aliases&&st.aliases.aliases||[],custom=null;
+ for(var i=0;i<al.length;i++)if(al[i].from===c||al[i].from===i3)custom=al[i].to;
+ var e=AP_DB[i3]||AP_DB[c];
+ return {code:c,name:custom||(e?e[0]:c),lat:e?e[1]:null,lon:e?e[2]:null}}
+function fmtDistKm(km){var u=get(st.work||st.doc||{},'display_config.metric_display.dist_unit');
+ if(u==='kilometers'||u==='meters')return (km<10?km.toFixed(1):Math.round(km))+' km away';
+ var mi=km*0.621371;return (mi<10?mi.toFixed(1):Math.round(mi))+' mi away'}
+function fmtRadKm(km){var u=get(st.work||st.doc||{},'display_config.metric_display.dist_unit');
+ if(u==='kilometers'||u==='meters')return Math.round(km)+' km radius';
+ return (km*0.621371).toFixed(1).replace(/\.0$/,'')+' mi radius'}
+function anLogoLoad(code){if(!code||AN.logos[code]!==undefined)return;AN.logos[code]=null;
+ fetch('/api/logo?al='+encodeURIComponent(code),{headers:key?{Authorization:'Bearer '+key}:{}})
+ .then(function(r){return r.ok?r.blob():null},function(){return null})
+ .then(function(b){if(!b)return;var u=URL.createObjectURL(b);AN.logos[code]=u;
+  $$('img[data-al="'+code+'"]').forEach(function(img){img.src=u;img.style.display='';if(img.nextSibling)img.nextSibling.style.display='none'})})}
+function alIconHtml(code){if(!code)return '<span class="an-ico">✈</span>';
+ var u=AN.logos[code];if(u===undefined)anLogoLoad(code);
+ return '<span class="an-ico">'+(u?'<img src="'+u+'" alt="">':'<img data-al="'+esc(code)+'" style="display:none" alt=""><span>'+esc(code)+'</span>')+'</span>'}
+
+function viewStats(){return '<div id="stats"><section class="card"><p class="muted" style="margin:0">Loading…</p></section></div>'}
 /* bars: [{label,value,watched 0..1}] for every slot, null value = not watched */
 function chart(bars,every){var W=320,H=120,top=6,base=96,n=bars.length,bw=W/n,max=1;
  bars.forEach(function(b){if(b.value>max)max=b.value});
@@ -707,24 +824,356 @@ function chart(bars,every){var W=320,H=120,top=6,base=96,n=bars.length,bw=W/n,ma
   if(i%every===0)g+='<text x="'+(x+bw/2)+'" y="'+(base+14)+'" text-anchor="middle">'+esc(b.label)+'</text>'});
  g+='<text x="'+W+'" y="10" text-anchor="end">'+max+'</text>';
  return g+'</svg><div class="legend"><span><i style="background:var(--accent)"></i>Flights seen</span><span><i style="background:var(--accent);opacity:.45"></i>Partly watched</span><span><i style="background:var(--line)"></i>Not watched</span></div>'}
-function statsDraw(j){var el=$('#stats');if(!el)return;var S=j.stats||{hours:[],days:[]};
- if(j.hour<0){el.innerHTML=card('Stats','','<p class="muted" style="margin:0">Waiting for the wall\u2019s clock to be set.</p>');return}
- var hours={},days={};S.hours.forEach(function(h){hours[h[0]]=h});S.days.forEach(function(d){days[d[0]]=d});
- var hb=[],db=[],i;
- for(i=j.hour-47;i<=j.hour;i++){var h=hours[i];hb.push({label:hourName(i),value:h?h[1]:null,watched:h?h[2]/60:0})}
- for(i=j.day-30;i<=j.day;i++){var d=days[i];db.push({label:String(new Date(i*86400000).getUTCDate()),value:d?d[1]:null,watched:d?d[2]/1440:0})}
- var today=days[j.day],top=today?today[3]:[],mins=today?today[2]:0,most=top.length?top[0][1]:1;
- var community=get(st.doc,'owned_config.flight_source')==='community';
- el.innerHTML=
-  card('Today',dayName(j.day),
-   '<div class="big">'+(today?today[1]:0)+'</div><p class="muted" style="margin:2px 0 0">flights seen · watched '+Math.floor(mins/60)+' h '+(mins%60)+' min'+(top.length?' · most: '+esc(top[0][0]):'')+'</p>')+
-  card('Top airlines today','From the flight number; private and unknown aircraft are left out.',
-   top.length?'<ul class="bars">'+top.map(function(a){return '<li><b>'+esc(a[0])+'</b><span class="b" style="width:'+Math.max(4,100*a[1]/most)+'%"></span><span class="n">'+a[1]+'</span></li>'}).join('')+'</ul>':'<p class="muted" style="margin:0">None yet today.</p>')+
-  card('Last 48 hours','Flights seen each hour. A flight counts once until it has been gone 30 minutes.',chart(hb,6))+
-  card('Last 31 days','Flights seen each day.',chart(db,5))+
-  card('About these numbers','',
-   '<p class="note" style="margin-top:0">'+(community?'Every aircraft that passes your filters counts.':'With FlightWall data, each poll lists at most five flights; only those count, so busy hours read low.')+
-   ' Kept in the wall\u2019s memory: they start over when it restarts.</p>')}
+
+function anAgg(daysMap,curDay,span){
+ var flights=0,mins=0,routes=0,daysWith=0,al={},tp={},og={},ds={},lo=curDay-span+1;
+ for(var d=lo;d<=curDay;d++){var x=daysMap[d];if(!x)continue;
+  daysWith++;flights+=x[1]||0;mins+=x[2]||0;routes+=x[4]||0;
+  (x[3]||[]).forEach(function(e){al[e[0]]=(al[e[0]]||0)+e[1]});
+  (x[5]||[]).forEach(function(e){tp[e[0]]=(tp[e[0]]||0)+e[1]});
+  (x[6]||[]).forEach(function(e){og[e[0]]=(og[e[0]]||0)+e[1]});
+  (x[7]||[]).forEach(function(e){ds[e[0]]=(ds[e[0]]||0)+e[1]})}
+ function sortMap(m){return Object.keys(m).map(function(k){return [k,m[k]]}).sort(function(a,b){return b[1]-a[1]||(a[0]<b[0]?-1:1)}).slice(0,15)}
+ return {flights:flights,mins:mins,routes:routes,daysWith:daysWith,lo:lo,hi:curDay,
+  airlines:sortMap(al),types:sortMap(tp),orig:sortMap(og),dest:sortMap(ds)}}
+
+function heatColor(t){
+ /* Purple -> magenta -> orange -> warm yellow -> white-hot */
+ t=Math.max(0,Math.min(1,t));
+ var stops=[[0,38,10,95,0],[.14,98,24,158,.52],[.38,200,46,138,.78],[.66,248,125,44,.90],[.88,255,210,78,.97],[1,255,252,224,1]];
+ for(var i=1;i<stops.length;i++)if(t<=stops[i][0]){
+  var a=stops[i-1],b=stops[i],f=(t-a[0])/(b[0]-a[0]);
+  return [Math.round(a[1]+(b[1]-a[1])*f),Math.round(a[2]+(b[2]-a[2])*f),Math.round(a[3]+(b[3]-a[3])*f),a[4]+(b[4]-a[4])*f]}
+ return [255,252,224,1]}
+
+function anHeatSpan(h){
+ if(!h)return null;
+ if(h.dlat>0&&h.dlon>0)return {lat:h.lat,lon:h.lon,dlat:h.dlat,dlon:h.dlon};
+ var r=h.r||15,cl=Math.max(0.05,Math.cos(h.lat*Math.PI/180));
+ return {lat:h.lat,lon:h.lon,dlat:(r*1.1)/111.32,dlon:(r*1.1)/(111.32*cl)}}
+
+function anPaintHeat(){
+ if(!AN.map||!AN.canvas)return;
+ var map=AN.map,c=AN.canvas,sz=map.getSize();
+ if(!sz.x||!sz.y)return;
+ var dpr=Math.min(window.devicePixelRatio||1,2);
+ c.width=sz.x*dpr;c.height=sz.y*dpr;c.style.width=sz.x+'px';c.style.height=sz.y+'px';
+ var ctx=c.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,sz.x,sz.y);
+ if(AN.ex){
+  /* Explore Anywhere live trails + aircraft glow */
+  var pts=AN.exPts;
+  ctx.lineCap='round';
+  pts.forEach(function(p){
+   var pt=map.latLngToContainerPoint([p[0],p[1]]);
+   var trk=p[2];
+   if(trk>=0){
+    var rad=(90-trk)*Math.PI/180,len=14;
+    var x2=pt.x-Math.cos(rad)*len,y2=pt.y+Math.sin(rad)*len;
+    var gr=ctx.createLinearGradient(pt.x,pt.y,x2,y2);
+    gr.addColorStop(0,'rgba(255,220,90,.85)');gr.addColorStop(.5,'rgba(248,110,55,.45)');gr.addColorStop(1,'rgba(120,25,165,0)');
+    ctx.strokeStyle=gr;ctx.lineWidth=3.5;ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(x2,y2);ctx.stroke()}
+   var rg=ctx.createRadialGradient(pt.x,pt.y,0,pt.x,pt.y,11);
+   rg.addColorStop(0,'rgba(255,245,190,.85)');rg.addColorStop(.4,'rgba(248,120,50,.42)');rg.addColorStop(1,'rgba(110,24,160,0)');
+   ctx.fillStyle=rg;ctx.beginPath();ctx.arc(pt.x,pt.y,11,0,6.2832);ctx.fill()});
+  return}
+ var h=AN.data&&AN.data.stats&&AN.data.stats.heat,sp=anHeatSpan(h);
+ if(!sp||!h.cells||!h.cells.length)return;
+ var n=h.n||40,dlat=sp.dlat,dlon=sp.dlon;
+ var maxV=1;h.cells.forEach(function(e){if(e[1]>maxV)maxV=e[1]});
+ ctx.globalCompositeOperation='lighter';
+ var p0=map.latLngToContainerPoint([sp.lat,sp.lon]);
+ var px1=map.latLngToContainerPoint([sp.lat,sp.lon+2*dlon/n]);
+ var py1=map.latLngToContainerPoint([sp.lat+2*dlat/n,sp.lon]);
+ var cellPx=Math.max(8,Math.min(36,Math.max(Math.abs(px1.x-p0.x),Math.abs(py1.y-p0.y))*1.45));
+ h.cells.forEach(function(e){
+  var idx=e[0],v=e[1],gx=idx%n,gy=Math.floor(idx/n);
+  var lat=sp.lat+dlat-(gy+0.5)*(2*dlat/n),lon=sp.lon-dlon+(gx+0.5)*(2*dlon/n);
+  var pt=map.latLngToContainerPoint([lat,lon]);
+  if(pt.x<-cellPx||pt.y<-cellPx||pt.x>sz.x+cellPx||pt.y>sz.y+cellPx)return;
+  var norm=Math.pow(v/maxV,0.6),col=heatColor(Math.max(0.22,norm));
+  var rg=ctx.createRadialGradient(pt.x,pt.y,0,pt.x,pt.y,cellPx);
+  rg.addColorStop(0,'rgba('+col[0]+','+col[1]+','+col[2]+','+col[3].toFixed(2)+')');
+  rg.addColorStop(.55,'rgba('+col[0]+','+col[1]+','+col[2]+','+(col[3]*0.45).toFixed(2)+')');
+  rg.addColorStop(1,'rgba('+col[0]+','+col[1]+','+col[2]+',0)');
+  ctx.fillStyle=rg;ctx.beginPath();ctx.arc(pt.x,pt.y,cellPx,0,6.2832);ctx.fill()});
+ ctx.globalCompositeOperation='source-over'}
+
+function anViewBounds(L){
+ var zones=(get(st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
+ if(AN.ex){
+  var rKm=AN.ex.dist*1.852,cl=Math.max(0.05,Math.cos(AN.ex.lat*Math.PI/180));
+  var dl=rKm/111.32,do_=rKm/(111.32*cl);
+  return {bounds:L.latLngBounds([[AN.ex.lat-dl,AN.ex.lon-do_],[AN.ex.lat+dl,AN.ex.lon+do_]]),
+          key:'E'+AN.ex.lat.toFixed(3)+','+AN.ex.lon.toFixed(3)+','+AN.ex.dist}}
+ if(AN.areaIdx>=0&&AN.areaIdx<zones.length){
+  var z=zones[AN.areaIdx],r=z.radius_km||15,cl2=Math.max(0.05,Math.cos(z.latitude*Math.PI/180));
+  var dl2=(r*1.25)/111.32,do2=(r*1.25)/(111.32*cl2);
+  return {bounds:L.latLngBounds([[z.latitude-dl2,z.longitude-do2],[z.latitude+dl2,z.longitude+do2]]),
+          key:'Z'+AN.areaIdx+':'+z.latitude.toFixed(3)+','+z.longitude.toFixed(3)+','+Math.round(r)}}
+ var h=AN.data&&AN.data.stats&&AN.data.stats.heat,sp=anHeatSpan(h);
+ if(sp){
+  return {bounds:L.latLngBounds([[sp.lat-sp.dlat,sp.lon-sp.dlon],[sp.lat+sp.dlat,sp.lon+sp.dlon]]),
+          key:'A'+sp.lat.toFixed(3)+','+sp.lon.toFixed(3)+','+sp.dlat.toFixed(3)+','+sp.dlon.toFixed(3)}}
+ if(zones.length){
+  var b=null;
+  zones.forEach(function(z){var r=z.radius_km||15,cl3=Math.max(0.05,Math.cos(z.latitude*Math.PI/180)),
+   dl3=r/111.32,do3=r/(111.32*cl3),zb=L.latLngBounds([[z.latitude-dl3,z.longitude-do3],[z.latitude+dl3,z.longitude+do3]]);
+   b=b?b.extend(zb):zb});
+  return {bounds:b,key:'ALL'+zones.length}}
+ return {bounds:L.latLngBounds([[40.45,-74.0],[40.85,-73.55]]),key:'DEF'}}
+
+function anDrawAreas(L){
+ if(!AN.areasLayer)return;
+ AN.areasLayer.clearLayers();
+ if(AN.ex){
+  L.circle([AN.ex.lat,AN.ex.lon],{radius:AN.ex.dist*1852,color:'#2ec5d8',weight:1.2,dashArray:'4 5',opacity:0.45,fill:false,interactive:false}).addTo(AN.areasLayer);
+  return}
+ var zones=(get(st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
+ zones.forEach(function(z,i){
+  var sel=AN.areaIdx===i;
+  L.circle([z.latitude,z.longitude],{radius:(z.radius_km||15)*1000,color:sel?'#ffd15c':'#2ec5d8',weight:sel?2:1.2,
+   dashArray:sel?null:'4 5',opacity:sel?0.75:0.4,fill:false,interactive:false}).addTo(AN.areasLayer)})}
+
+function anMountMap(){
+ var slot=$('#an-map-slot');if(!slot)return;
+ if(AN.map&&AN.mapEl&&!AN.mapEl.isConnected){AN.map.remove();AN.map=null;AN.canvas=null;AN.areasLayer=null;AN.mapEl=null}
+ if(!AN.mapEl){AN.mapEl=document.createElement('div');AN.mapEl.className='an-map'}
+ if(AN.mapEl.parentNode!==slot){slot.innerHTML='';slot.appendChild(AN.mapEl)}
+ if(AN.map&&window.L){
+  var vb=anViewBounds(window.L);
+  AN.map.invalidateSize();
+  anDrawAreas(window.L);
+  if(AN.lastView!==vb.key){AN.lastView=vb.key;AN.map.fitBounds(vb.bounds.pad(0.08))}
+  anPaintHeat();return}
+ leaflet().then(function(L){
+  if(!AN.mapEl||!AN.mapEl.isConnected||AN.map)return;
+  var m=L.map(AN.mapEl,{scrollWheelZoom:false,zoomControl:true,attributionControl:true});
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,
+   attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).addTo(m);
+  AN.areasLayer=L.layerGroup().addTo(m);
+  var cv=document.createElement('canvas');
+  cv.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:400';
+  AN.mapEl.appendChild(cv);
+  AN.map=m;AN.canvas=cv;
+  var vb=anViewBounds(L);AN.lastView=vb.key;
+  anDrawAreas(L);
+  m.fitBounds(vb.bounds.pad(0.08));
+  m.on('move zoom viewreset resize',anPaintHeat);
+  setTimeout(function(){m.invalidateSize();anPaintHeat()},80)})
+ .catch(function(){slot.innerHTML='<p class="note" style="margin:0">Map tiles need an internet connection on this phone or computer.</p>'})}
+
+function anRareRow(r){
+ /* r = [seen_at, tier, type, cs, reg, al, orig, dest] */
+ var tier=r[1],code=r[2]||'',name=AC_NAMES[code]||code,al=r[5]||'',route=(r[6]&&r[7])?(r[6]+' → '+r[7]):(r[6]||r[7]||'');
+ var meta=[r[3],r[4],route,r[0]?ago(r[0]):''].filter(Boolean).join(' · ');
+ return '<li>'+alIconHtml(al)+'<div class="an-info"><div class="an-name">'+esc(name)+(code&&AC_NAMES[code]?' <span class="muted" style="font-weight:400;font-size:13px">'+esc(code)+'</span>':'')+'</div>'+
+  '<div class="an-subt">'+esc(meta)+'</div></div><span class="an-badge an-b'+tier+'">'+esc(RARE_LBL[tier]||'Rare')+'</span></li>'}
+
+function anRankList(items,total,kind,refLat,refLon){
+ if(!items.length)return '<p class="muted" style="margin:6px 0 0">No data yet for this period.</p>';
+ var max=items[0][1]||1,denom=total||items.reduce(function(s,x){return s+x[1]},0)||1;
+ return '<ul class="an-list">'+items.map(function(x,i){
+  var k=x[0],n=x[1],pct=Math.max(1,Math.round(100*n/denom)),w=Math.max(4,100*n/max),ico='',title=k,sub='';
+  if(kind==='airline'){ico=alIconHtml(k);title=AL_NAMES[k]||k;sub=AL_NAMES[k]?k:''}
+  else if(kind==='type'){var rt=RARE_JS[k];ico='<span class="an-ico" style="font-size:10px">'+esc(k.slice(0,4))+'</span>';
+   title=AC_NAMES[k]||k;sub=(AC_NAMES[k]?k:'Aircraft type')+(rt?' · '+RARE_LBL[rt]:'')}
+  else{var ap=apInfo(k);ico='<span class="an-ico">'+esc(k.slice(0,4))+'</span>';title=ap.name!==k?(k+' · '+ap.name):k;
+   sub=(ap.lat!=null&&refLat!=null)?fmtDistKm(havKm(refLat,refLon,ap.lat,ap.lon)):''}
+  return '<li class="an-row"><span class="an-rk">'+(i+1)+'</span>'+ico+'<div class="an-info"><div class="an-name">'+esc(title)+'</div>'+
+   (sub?'<div class="an-subt">'+esc(sub)+'</div>':'')+'</div><div class="an-val"><b>'+n.toLocaleString()+'</b><small>'+pct+'%</small></div>'+
+   '<div class="an-barw"><div class="an-barf" style="width:'+w+'%"></div></div></li>'}).join('')+'</ul>'}
+
+function anExploreStats(){
+ var ac=AN.ex&&AN.ex.ac||[],al={},tp={},rare=[];
+ ac.forEach(function(a){
+  var t=(a[3]||'').toUpperCase(),cs=(a[4]||'').toUpperCase(),reg=a[5]||'',al3=/^[A-Z]{3}\d/.test(cs)?cs.slice(0,3):'';
+  if(t)tp[t]=(tp[t]||0)+1;
+  if(al3)al[al3]=(al[al3]||0)+1;
+  if(t&&RARE_JS[t])rare.push([AN.ex.at||0,RARE_JS[t],t,cs,reg,al3,'',''])});
+ function sm(m){return Object.keys(m).map(function(k){return [k,m[k]]}).sort(function(a,b){return b[1]-a[1]}).slice(0,15)}
+ return {count:ac.length,airlines:sm(al),types:sm(tp),rare:rare}}
+
+function statsDraw(j){
+ if(j)AN.data=j;
+ var el=$('#stats');if(!el||!AN.data)return;
+ j=AN.data;
+ var S=j.stats||{hours:[],days:[],rare:[],rare_total:0,heat:null};
+ if(j.hour<0&&!AN.ex){el.innerHTML=card('Stats','','<p class="muted" style="margin:0">Waiting for the wall\u2019s clock to be set.</p>');return}
+ var hours={},days={};(S.hours||[]).forEach(function(h){hours[h[0]]=h});(S.days||[]).forEach(function(d){days[d[0]]=d});
+ var span=AN.period==='today'?1:AN.period==='week'?7:30;
+ var agg=anAgg(days,j.day,span);
+ var zones=(get(st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
+ if(AN.areaIdx>=zones.length)AN.areaIdx=-1;
+ var zSel=AN.areaIdx>=0?zones[AN.areaIdx]:(zones[0]||{});
+ var spH=anHeatSpan(S.heat);
+ var refLat=AN.ex?AN.ex.lat:(AN.areaIdx>=0?zSel.latitude:(spH?spH.lat:(zSel.latitude!=null?zSel.latitude:null)));
+ var refLon=AN.ex?AN.ex.lon:(AN.areaIdx>=0?zSel.longitude:(spH?spH.lon:(zSel.longitude!=null?zSel.longitude:null)));
+ var exMode=!!AN.ex,exS=exMode?anExploreStats():null;
+ var community=get(st.doc||{},'owned_config.flight_source')==='community';
+ var locLabel;
+ if(exMode){locLabel='Exploring <b>'+esc(AN.ex.name)+'</b> · '+AN.ex.dist+' NM live'}
+ else if(zones.length>1&&AN.areaIdx<0){
+  var names=zones.map(function(z,i){return z.name||('Area '+(i+1))}).join(', ');
+  locLabel='Showing <b>All '+zones.length+' areas</b> · '+esc(names)}
+ else{
+  var nm=zSel.name||'Primary area',rk=zSel.radius_km||15;
+  locLabel='Showing <b>'+esc(nm)+'</b> · '+fmtRadKm(rk)}
+
+ /* Top controls: timeframe, location bar, optional Explore picker, sub-tabs */
+ var top='<div class="an-top">'+
+  (exMode?'':'<div class="seg" role="group" aria-label="Timeframe">'+[['today','Today'],['week','This week'],['month','Last 30 days']].map(function(o){
+   return '<button type="button" data-an-p="'+o[0]+'" aria-pressed="'+(AN.period===o[0])+'">'+o[1]+'</button>'}).join('')+'</div>')+
+  '<div class="an-loc"><span>'+locLabel+'</span><button type="button" class="btn small" id="an-chg">'+(AN.picker?'Close':'Change')+'</button></div>';
+
+ if(AN.picker){
+  var areaBtns=(zones.length>1?'<button type="button" class="btn small'+(!exMode&&AN.areaIdx<0?' primary':'')+'" data-an-z="-1">All '+zones.length+' areas</button>':'')+
+   zones.map(function(z,i){return '<button type="button" class="btn small'+(!exMode&&(AN.areaIdx===i||(zones.length===1&&AN.areaIdx<0))?' primary':'')+'" data-an-z="'+i+'">'+esc(z.name||('Area '+(i+1)))+'</button>'}).join('');
+  top+=card('Choose area or explore','Zoom to any of your wall’s watch areas (your wall records all of them together), or explore live airspace anywhere in the world via adsb.fi.',
+   '<div class="btns" style="margin-top:4px">'+areaBtns+'</div>'+
+   '<form class="map-search" id="ex-form" style="margin-top:10px"><input type="search" id="ex-q" placeholder="Search any city or airport (e.g. London, SFO, Tokyo)" autocomplete="off"><button class="btn" type="submit">Search</button></form>'+
+   '<div class="map-results" id="ex-res"></div>'+
+   '<div class="an-presets">'+EX_PRESETS.map(function(p,i){return '<button type="button" class="btn small" data-ex-pre="'+i+'">'+esc(p[0])+'</button>'}).join('')+'</div>'+
+   '<div class="field row" style="margin-top:10px;padding-bottom:0"><label for="ex-watch">Auto-refresh live trails (15 s)<small>Builds a flight-path heat map while this Explore view stays open</small></label><label class="sw"><input type="checkbox" id="ex-watch"'+(AN.exWatch?' checked':'')+'><span></span></label></div>')}
+
+ top+='<div class="an-sub" role="group" aria-label="Analytics section">'+
+  [['overview','Overview'],['airports','Airports'],['aircraft','Aircraft'],['airlines','Airlines']].map(function(o){
+   return '<button type="button" data-an-s="'+o[0]+'" aria-pressed="'+(AN.sub===o[0])+'">'+o[1]+'</button>'}).join('')+'</div></div>';
+
+ var body='';
+ if(AN.sub==='overview'){
+  /* Flight-path heat map */
+  var h=S.heat,cellKm2=0;
+  if(spH){var hn=h.n||40,cLat=(2*spH.dlat*111.32)/hn,cLon=(2*spH.dlon*111.32*Math.max(0.05,Math.cos(spH.lat*Math.PI/180)))/hn;cellKm2=cLat*cLon}
+  var cellTxt=cellKm2?('± '+(cellKm2<1?cellKm2.toFixed(2):cellKm2.toFixed(1))+' km²'):'—';
+  var daysData=exMode?'Live':h&&h.since?Math.max(0.1,(Date.now()/1000-h.since)/86400).toFixed(1):'0';
+  var periodTxt=exMode?(AN.exBusy?'Refreshing…':(AN.ex.count+' live aircraft')):(span===1?dayName(j.day):(dayName(agg.lo)+' – '+dayName(agg.hi)));
+  var heatNote=exMode?'Live positions and heading trails from adsb.fi via your wall.':
+   (!h||!h.cells||!h.cells.length)?(community?'Waiting for aircraft positions to build your flight-path corridors.':'FlightWall data does not include coordinates. Turn on Progress bars or switch to Community data to paint flight-path corridors.'):
+   'Brighter corridors show heavier traffic ('+(h.pts||0).toLocaleString()+' fixes recorded across all watch areas).';
+  var mapCard=card('Flight paths',heatNote,
+   '<div id="an-map-slot"></div>'+
+   '<div class="an-scale"><span>Quiet</span><span class="an-grad"></span><span>Busiest</span></div>'+
+   '<div class="an-meta"><div><small>Period</small><b>'+esc(periodTxt)+'</b></div>'+
+   '<div><small>'+(exMode?'Trails plotted':'Days of data')+'</small><b>'+(exMode?AN.exPts.length:daysData)+'</b></div>'+
+   '<div><small>'+(exMode?'Radius':'Grid cell')+'</small><b>'+(exMode?(AN.ex.dist+' NM'):cellTxt)+'</b></div></div>');
+
+  /* Traffic KPIs */
+  var rtPct=agg.flights?Math.round(100*agg.routes/agg.flights):0;
+  var watchTxt=agg.mins<60?(agg.mins+'m'):agg.mins<1440?(Math.floor(agg.mins/60)+'h '+(agg.mins%60)+'m'):(Math.floor(agg.mins/60)+'h');
+  var kpiCard=card('Traffic',exMode?'Current snapshot of aircraft in this airspace.':'Deduplicated sightings (30-minute revisit window).',
+   exMode?('<div class="an-kpis"><div class="an-kpi"><small>Live aircraft</small><div class="big">'+exS.count+'</div></div>'+
+    '<div class="an-kpi"><small>Types seen</small><div class="big">'+exS.types.length+'</div></div>'+
+    '<div class="an-kpi"><small>Airlines</small><div class="big">'+exS.airlines.length+'</div></div>'+
+    '<div class="an-kpi"><small>Rare right now</small><div class="big">'+exS.rare.length+'</div></div></div>'):
+   ('<div class="an-kpis"><div class="an-kpi"><small>Flights</small><div class="big">'+agg.flights.toLocaleString()+'</div></div>'+
+    '<div class="an-kpi"><small>Routes known</small><div class="big">'+rtPct+'%</div></div>'+
+    '<div class="an-kpi"><small>Watched</small><div class="big">'+watchTxt+'</div></div>'+
+    '<div class="an-kpi"><small>Rare spotted</small><div class="big">'+(S.rare_total||0)+'</div></div></div>'));
+
+  /* Rare aircraft badges */
+  var rareList=exMode?exS.rare:(S.rare||[]);
+  var rareCard=card('Rare aircraft','One of a kind, very rare, and notable aircraft measured against global fleet rarity.',
+   rareList.length?'<ul class="an-rare">'+rareList.slice(0,8).map(anRareRow).join('')+'</ul>':
+    '<p class="muted" style="margin:4px 0 0">No rare aircraft spotted yet. Notable widebodies, retro jets, military and one-of-a-kind airframes appear here automatically.</p>');
+
+  /* 48h + 31d bar charts + Persistence card */
+  var extra='';
+  if(!exMode){
+   var hb=[],db=[],i;
+   for(i=j.hour-47;i<=j.hour;i++){var hr=hours[i];hb.push({label:hourName(i),value:hr?hr[1]:null,watched:hr?hr[2]/60:0})}
+   for(i=j.day-30;i<=j.day;i++){var dr=days[i];db.push({label:String(new Date(i*86400000).getUTCDate()),value:dr?dr[1]:null,watched:dr?dr[2]/1440:0})}
+   var sy=j.sync||{},syncTxt=sy.configured?(sy.pending?'Backing up…':sy.ok?('Backed up'+(sy.at?' '+ago(sy.at):'')+(sy.restored?' · restored on boot':'')):(sy.status?('Last try answered '+sy.status):'Waiting for first sync')):'Not configured';
+   extra='<div class="grid two" style="margin-top:14px">'+
+    card('Last 48 hours','Flights seen each hour.',chart(hb,6))+
+    card('Last 31 days','Flights seen each day.',chart(db,5))+
+    card('Persistence & backup','Stats live in RAM so flash never wears out. Download a backup anytime, or point your wall at a LAN/NAS server (desk/stats_server.py) for automatic reboot persistence.',
+     '<div class="field" data-field="owned_config.stats_url" style="border-top:0;padding-top:4px"><label for="f_stats_url">Backup server URL<small>Optional LAN HTTP server, e.g. http://192.168.1.50:8090</small></label>'+
+     '<input type="text" id="f_stats_url" data-bind="owned_config.stats_url" maxlength="96" placeholder="http://192.168.1.50:8090" value="'+esc(val('owned_config.stats_url',''))+'"></div>'+
+     '<p class="note" style="margin-top:0">Server status: '+esc(syncTxt)+'</p>'+
+     '<div class="btns">'+(sy.configured?'<button type="button" class="btn small" id="an-sync-now">Back up now</button>':'')+
+     '<button type="button" class="btn small" id="an-dl">Download backup</button>'+
+     '<label class="btn small" style="cursor:pointer">Restore backup<input type="file" id="an-ul" accept=".fwan,application/octet-stream" style="display:none"></label></div>')+
+    card('About these numbers','',
+     '<p class="note" style="margin-top:0">'+(community?'Every aircraft that passes your filters counts, and every live position paints the flight-path heat map.':'With FlightWall data, each poll lists at most five flights; busy hours read low, and positions come from Progress bar lookups or optional feed coordinates.')+'</p>')+
+    '</div>'}
+  body='<div class="grid">'+mapCard+kpiCard+rareCard+'</div>'+extra;
+ } else if(AN.sub==='airports'){
+  if(exMode){
+   body=card('Airports','Live adsb.fi snapshots include positions, types and callsigns without airport routes. Switch back to My wall for departure and arrival airport rankings.','')}
+  else{
+   var rtPct2=agg.flights?Math.round(100*agg.routes/agg.flights):0;
+   var list=AN.apDir==='dep'?agg.orig:agg.dest;
+   body=card(AN.apDir==='dep'?'Top departure airports':'Top arrival airports','Route known for '+rtPct2+'% of flights in this period.',
+    '<div class="seg" style="margin-bottom:8px"><button type="button" data-an-ap="dep" aria-pressed="'+(AN.apDir==='dep')+'">Departures</button>'+
+    '<button type="button" data-an-ap="arr" aria-pressed="'+(AN.apDir==='arr')+'">Arrivals</button></div>'+
+    anRankList(list,agg.routes,'airport',refLat,refLon))}
+ } else if(AN.sub==='aircraft'){
+  var tList=exMode?exS.types:agg.types,tDenom=exMode?exS.count:agg.flights,rList=exMode?exS.rare:(S.rare||[]);
+  body='<div class="grid">'+
+   card('Most common types',exMode?'Aircraft types currently flying in this airspace.':'Top ICAO aircraft types spotted in this period.',anRankList(tList,tDenom,'type',refLat,refLon))+
+   card('Rare aircraft spotted','One of a kind, very rare, and notable aircraft.',rList.length?'<ul class="an-rare">'+rList.map(anRareRow).join('')+'</ul>':'<p class="muted" style="margin:4px 0 0">None spotted yet.</p>')+
+   '</div>';
+ } else {
+  var aList=exMode?exS.airlines:agg.airlines,aDenom=exMode?exS.count:agg.flights;
+  body=card('Most common airlines',exMode?'Airlines currently flying in this airspace.':'Share of flights by airline in this period.',anRankList(aList,aDenom,'airline',refLat,refLon));
+ }
+
+ el.innerHTML=top+body;
+ anWire(el);
+ if(AN.sub==='overview')anMountMap();
+}
+
+function exRun(name,lat,lon,dist){
+ AN.ex={name:name,lat:lat,lon:lon,dist:dist||25,count:0,at:0,ac:[]};
+ AN.exPts=[];AN.exBusy=true;AN.picker=false;statsDraw();
+ exPoll(true)}
+function exPoll(reset){
+ if(!AN.ex)return;
+ AN.exBusy=true;
+ api('/api/explore',{method:'POST',json:{lat:AN.ex.lat,lon:AN.ex.lon,dist:AN.ex.dist}}).then(function(){
+  var tries=0;
+  function check(){if(!AN.ex)return;
+   api('/api/explore').then(function(r){
+    if(r.pending&&tries++<12){setTimeout(check,700);return}
+    AN.exBusy=false;
+    if(r.ok){AN.ex.count=r.count||0;AN.ex.at=r.at||0;AN.ex.ac=r.ac||[];
+     if(reset)AN.exPts=[];
+     (r.ac||[]).forEach(function(a){AN.exPts.push(a)});
+     if(AN.exPts.length>600)AN.exPts=AN.exPts.slice(-600)}
+    else toast('Explore lookup failed (status '+(r.status||'?')+')');
+    statsDraw()}).catch(function(){AN.exBusy=false;statsDraw()})}
+  setTimeout(check,700)})
+ .catch(function(e){AN.exBusy=false;toast(e.message);statsDraw()})}
+
+function anWire(root){
+ $$('[data-an-p]',root).forEach(function(b){b.onclick=function(){AN.period=b.dataset.anP;statsDraw()}});
+ $$('[data-an-s]',root).forEach(function(b){b.onclick=function(){AN.sub=b.dataset.anS;statsDraw()}});
+ $$('[data-an-ap]',root).forEach(function(b){b.onclick=function(){AN.apDir=b.dataset.anAp;statsDraw()}});
+ var chg=$('#an-chg',root);if(chg)chg.onclick=function(){AN.picker=!AN.picker;statsDraw()};
+ $$('[data-an-z]',root).forEach(function(b){b.onclick=function(){AN.ex=null;AN.exPts=[];AN.exWatch=false;clearInterval(AN.exTimer);AN.areaIdx=+b.dataset.anZ;AN.picker=false;statsDraw()}});
+ $$('[data-ex-pre]',root).forEach(function(b){b.onclick=function(){var p=EX_PRESETS[+b.dataset.exPre];exRun(p[0],p[1],p[2],p[3])}});
+ var ew=$('#ex-watch',root);if(ew)ew.onchange=function(){AN.exWatch=ew.checked;clearInterval(AN.exTimer);
+  if(AN.exWatch)AN.exTimer=setInterval(function(){if(st.tab==='stats'&&AN.ex&&!AN.exBusy)exPoll(false)},15000)};
+ var ef=$('#ex-form',root);if(ef)ef.onsubmit=function(e){e.preventDefault();var q=$('#ex-q',root).value.trim(),box=$('#ex-res',root);
+  if(!q)return;box.innerHTML='<p class="note" style="margin:0">Searching…</p>';
+  fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q='+encodeURIComponent(q),{headers:{'Accept-Language':navigator.language||'en'}})
+  .then(function(r){if(!r.ok)throw new Error();return r.json()}).then(function(list){
+   if(!list.length){box.innerHTML='<p class="note" style="margin:0">Nothing found.</p>';return}
+   box.innerHTML=list.map(function(p,i){return '<button type="button" class="result" data-ex-i="'+i+'">'+esc(p.display_name)+'</button>'}).join('');
+   $$('[data-ex-i]',box).forEach(function(b){b.onclick=function(){var p=list[+b.dataset.exI];exRun(p.name||p.display_name.split(',')[0],+p.lat,+p.lon,25)}})})
+  .catch(function(){box.innerHTML='<p class="note" style="margin:0">Search needs an internet connection.</p>'})};
+ var su=$('#f_stats_url',root);if(su)su.addEventListener('change',function(){set(st.work,'owned_config.stats_url',su.value.trim());changed()});
+ var sn=$('#an-sync-now',root);if(sn)sn.onclick=function(){sn.disabled=true;
+  api('/api/stats/sync',{method:'POST'}).then(function(){toast('Backup started');setTimeout(statsLoad,2000)}).catch(function(e){toast(e.message)}).then(function(){sn.disabled=false})};
+ var dl=$('#an-dl',root);if(dl)dl.onclick=function(){
+  fetch('/api/stats/checkpoint',{headers:{Authorization:'Bearer '+key}}).then(function(r){if(!r.ok)throw new Error('Could not download backup');return r.blob()})
+  .then(function(b){var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='freebirdwall-stats.fwan';a.click();setTimeout(function(){URL.revokeObjectURL(a.href)},5000)})
+  .catch(function(e){toast(e.message)})};
+ var ul=$('#an-ul',root);if(ul)ul.onchange=function(){var f=ul.files&&ul.files[0];if(!f)return;
+  f.arrayBuffer().then(function(buf){return fetch('/api/stats/checkpoint',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/octet-stream'},body:buf})})
+  .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||'Restore failed');toast('Backup restored');statsLoad()})})
+  .catch(function(e){toast(e.message)});ul.value=''};
+}
 /* Console: plain text from /api/log, newest at the bottom. */
 /* Changes made in the FlightWall app: the last check, and a queued copy */
 function ago(t){var s=Math.max(0,Date.now()/1000-t);return s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<129600?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'}
@@ -957,7 +1406,7 @@ var EDITABLE={display_config:['layout_template','loading_template','title_text',
   'flight_display_seconds','flight_identity','weather','layout_overrides'],
  request_config:['radius_requests','data_filters','tracked_flights'],
  owned_config:['flight_source','follow_app','tracking_source','scroll_speed','progress_bar','heartbeat_enabled','weather_station',
-  'tracked_landed_minutes','vendor_images','clock_in_rotation','weather_in_rotation']};
+  'tracked_landed_minutes','vendor_images','clock_in_rotation','weather_in_rotation','stats_url']};
 function edits(){var out={};Object.keys(EDITABLE).forEach(function(sec){var a=st.base[sec]||{},b=st.work[sec]||{},e={};
   EDITABLE[sec].forEach(function(k){if(!same(a[k],b[k]))e[k]=b[k]===undefined?null:trim(k,b[k])});
   if(e.radius_requests===null)delete e.radius_requests;

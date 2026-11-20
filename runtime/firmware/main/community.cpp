@@ -136,7 +136,10 @@ double rank(void *, const Flight &f){
  * just the eight kept. */
 bool allow(void *, const Flight &f){
     if (!community_candidate(s->config, f, s_logos)) return false;
-    fw_stats_flight(f.aircraft_id, f.callsign, f.registration, f.airline.icao);
+    const char *orig = f.origin.iata[0] ? f.origin.iata : f.origin.icao;
+    const char *dest = f.destination.iata[0] ? f.destination.iata : f.destination.icao;
+    fw_stats_flight_ex(f.aircraft_id, f.callsign, f.registration, f.airline.icao,
+                       f.aircraft_type, orig, dest, f.has_position, f.latitude, f.longitude);
     return true;
 }
 
@@ -235,7 +238,10 @@ void lookup_route(Flight &f){
         bool parsed = !deserializeJson(s->work->doc, in, DeserializationOption::NestingLimit(12)) && !in.over &&
                       body.read() == -1;                      /* the whole answer, nothing after it */
         if (parsed && enrich_route(s->work->doc.as<JsonVariantConst>(), f.callsign, f)) {
+            const char *orig = f.origin.iata[0] ? f.origin.iata : f.origin.icao;
+            const char *dest = f.destination.iata[0] ? f.destination.iata : f.destination.icao;
             s->cache.route_result(f);
+            fw_stats_route(f.aircraft_id, f.callsign, f.registration, orig, dest);
             found = true;
         }
         s->work->doc.clear();
