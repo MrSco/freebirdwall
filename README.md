@@ -12,7 +12,7 @@ keeps everything the wall already does, needs no subscription, and adds:
 - **Free flight data.** Choose the community services ([adsb.fi](https://adsb.fi) and [adsbdb](https://www.adsbdb.com)) instead of the FlightWall service if you like.
 - **Your trips on the wall (Sync).** Add your flights or import a calendar file, and the wall shows the trip and follows the plane while it is in the air.
 - **Tracked flights**, with real times when you add a FlightAware key.
-- **Stats** of the planes your wall has seen, **extra clocks**, and **your own airport names**.
+- **Analytics & Stats** of the planes your wall has seen — a flight-path heat map across all your watch areas, top departure & arrival airports, most common aircraft types, airlines breakdown, rare aircraft badges, an **Explore anywhere** live map, and optional automatic backups to a computer or NAS on your Wi-Fi — plus **extra clocks** and **your own airport names**.
 - **Names that fit.** Long airline and airport names are shortened, and scroll if they are still too long.
 - **Everything from FlightWall 4.1 and 4.2, and more.** Live METAR **weather** when no planes are overhead (Simple,
   Summary or raw METAR), on the free flight data too; **custom lines** on the flight card; **aircraft silhouettes**
@@ -98,7 +98,7 @@ sign in up to four browsers this way.
 | <img src="docs/images/dashboard-display.jpg" alt="Display settings, with the live preview of the wall" width="260"> | **Display:** a live preview of the wall, what each flight shows, brightness and sleep hours, and how fast long names scroll. **Clock:** time zones, 12 or 24 hours, and up to two extra cities. **Airports:** rename airports the way you say them ("Kennedy" instead of "John F Kennedy Intl"). |
 | <img src="docs/images/dashboard-flights.jpg" alt="The areas the wall watches, on a map" width="260"> | **Flights:** where flight data comes from (the FlightWall service or the free community services), the areas the wall watches (on a map), which aircraft to show, and **tracked flights**: flights followed wherever they are. |
 | <img src="docs/images/dashboard-sync.jpg" alt="Sync" width="260"> | **Sync:** your own trips. Add a flight, or import a calendar (`.ics`) file from a crew or calendar app. The wall counts down to departure, follows the plane in the air, shows what is next, and can show a message for home. |
-| <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flights seen today, the top airlines, the last 48 hours and the last 31 days. **Games:** see [below](#play-games-on-the-wall). **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
+| <img src="docs/images/dashboard-stats.jpg" alt="Stats" width="260"> | **Stats:** flight-path heat map across your watch areas, Today / This week / Last 30 days views, top airports, aircraft types, airlines, rare aircraft badges, live worldwide airspace explorer, and [optional backup](#back-up-your-stats-optional). **Games:** see [below](#play-games-on-the-wall). **Device:** whether the wall follows changes you make in the FlightWall app, and its recent status messages. |
 
 **See it before you save it.** Display, Clock and Airports open with a live picture of the wall, drawn by the wall's own
 code: change the layout, the title, the units or an airport's name and the picture changes at once, with your wall's
@@ -137,6 +137,61 @@ page reaches only the game, never your settings. Add it to your home screen to p
 
 Phones that can vibrate buzz when the score changes. When nobody has played for a minute, the wall goes back to showing
 flights.
+
+---
+
+## Back up your stats (optional)
+
+To avoid wearing out the wall's flash memory, your stats and heat map live in RAM while the wall is running. If you want your history to survive reboots and firmware updates, you can either:
+
+- **Save/restore manually in the browser:** open **Stats → Persistence & backup** and use **Download backup** / **Restore backup** (`.fwan` file).
+- **Auto-backup to a computer, Raspberry Pi, or NAS on your Wi-Fi:** run the zero-dependency [`desk/stats_server.py`](desk/stats_server.py) script (Python 3 standard library only — no packages to install). The wall talks to it over plain HTTP (`GET`/`PUT /checkpoint`) rather than Windows SMB/UNC paths so it uses almost no RAM on the wall.
+
+### Windows PC / Windows NAS
+
+1. Copy [`desk/stats_server.py`](desk/stats_server.py) onto your Windows PC or NAS (for example `C:\FreeBirdWall\stats_server.py`). Install Python 3 if needed (`winget install Python.Python.3.12`).
+2. Test it in PowerShell, pointing `--dir` at any local or shared folder:
+   ```powershell
+   py C:\FreeBirdWall\stats_server.py --port 8090 --dir "D:\YourShare\freebirdwall-stats"
+   ```
+   *(If you run it on another always-on Windows PC, `--dir` can also point directly at a network UNC share like `"\\NAS\share\freebirdwall-stats"`.)*
+3. Allow port `8090` on your private network (run once in an **Admin PowerShell**):
+   ```powershell
+   New-NetFirewallRule -DisplayName "FreeBirdWall Stats Backup" -Direction Inbound -Protocol TCP -LocalPort 8090 -Profile Private -Action Allow
+   ```
+4. Auto-start invisibly when Windows boots (run once in an **Admin PowerShell** — runs in the background with no terminal window, even before login):
+   ```powershell
+   $pyw = (Get-Command pythonw.exe).Source
+   $action = New-ScheduledTaskAction -Execute $pyw -Argument 'C:\FreeBirdWall\stats_server.py --port 8090 --dir "D:\YourShare\freebirdwall-stats"'
+   $trigger = New-ScheduledTaskTrigger -AtStartup
+   $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+   Register-ScheduledTask -TaskName "FreeBirdWallStatsBackup" -Action $action -Trigger $trigger -Settings $settings -User "SYSTEM" -RunLevel Highest -Force
+   Start-ScheduledTask -TaskName "FreeBirdWallStatsBackup"
+   ```
+
+### Docker (Synology, Unraid, TrueNAS, QNAP, Linux)
+
+Copy [`desk/stats_server.py`](desk/stats_server.py) into a folder on your NAS (e.g. `/path/on/nas/freebirdwall`) and run:
+
+```bash
+docker run -d --name freebirdwall-stats --restart unless-stopped \
+  -p 8090:8090 \
+  -v /path/on/nas/freebirdwall:/data \
+  python:3-alpine \
+  python /data/stats_server.py --port 8090 --dir /data
+```
+
+### Linux / Mac / Raspberry Pi (Python 3 directly)
+
+```bash
+python3 desk/stats_server.py --port 8090 --dir ./freebirdwall-stats
+```
+
+### Connect the wall
+
+1. Verify the server is reachable by opening `http://<server-ip>:8090/health` in your browser (you should see `{"ok": true, ...}`).
+2. In the wall dashboard, open **Stats → Persistence & backup**, enter `http://<server-ip>:8090`, and press **Save**.
+3. Press **Back up now** to verify `checkpoint.fwan` is created. From then on, the wall automatically backs up every 15 minutes when new flights arrive and restores automatically on reboot.
 
 ---
 
@@ -204,7 +259,7 @@ mode with only Wi-Fi. Plug in USB, open the installer, and use **Start the vendo
 |---|---|
 | `runtime/firmware/` | The firmware (ESP-IDF 4.4.7). Start with its [README](runtime/firmware/README.md); design notes are in `FEED.md`, `SETTINGS.md`, `SYNC.md`, `UPDATES.md` and the other documents there. |
 | `installer/` | The USB installer. `py installer/tools/build_installer.py` builds `dist/freebirdwall-installer.html` from the keepable build and `publish_site.py` puts it on the website (`docs/`, served by GitHub Pages); `node installer/tests/test_installer.mjs` runs its tests; add `#demo` to the page's address to try it on a pretend wall. |
-| `desk/` | Desk tools for your own wall over Wi-Fi: status, the log, updates and the vendor firmware back into the spare slot (`py desk/firmware_cli.py status\|log\|update\|spare`), with your wall's address and key in `desk/device.json` (never committed). Tests: `py -m unittest discover desk`. |
+| `desk/` | Desk tools for your own wall over Wi-Fi: status, the log, updates and the vendor firmware back into the spare slot (`py desk/firmware_cli.py status\|log\|update\|spare`), with your wall's address and key in `desk/device.json` (never committed), plus the optional LAN/NAS analytics backup server (`desk/stats_server.py`). Tests: `py -m unittest discover desk`. |
 | `shared/` | Code the firmware and the desk share: the update checker, SHA-256, airport names and the pinned TLS roots. |
 | `runtime/net/`, `runtime/src/` | The source-built HTTPS client and the community-feed reader, with their own tests. |
 
