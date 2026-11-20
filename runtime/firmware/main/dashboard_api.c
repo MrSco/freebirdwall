@@ -24,6 +24,8 @@
 #include "owner_descriptor.h"
 #include "settings_store.h"
 #include "stats.h"
+#include "fw_analytics.h"
+#include "explore.h"
 #include "big_buffer.h"
 #include "wall_log.h"
 #include "sync_store.h"
@@ -267,18 +269,109 @@ static esp_err_t send_settings(httpd_req_t *req, const char *status){
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
-/* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Built in a work
- * buffer for the moment it takes, not in 8 KiB of heap kept for it. */
+/* Flight stats for the dashboard's Stats tab (ANALYTICS.md). Streamed in
+ * 512-byte chunks directly from fw_analytics: zero heap and never contends
+ * for the shared block. */
+static bool stats_chunk(void *ctx, const char *data, size_t len){
+    return httpd_resp_send_chunk((httpd_req_t *)ctx, data, (ssize_t)len) == ESP_OK;
+}
+
 static esp_err_t stats_get(httpd_req_t *req){
-    size_t cap = 8192, n;          /* at most ~6.6 KB: 48 hours, 31 days of 12 airlines */
+    if (!gate(req)) return ESP_OK;
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    if (!fw_stats_stream(stats_chunk, req)) return ESP_FAIL;
+    return httpd_resp_send_chunk(req, NULL, 0);
+}
+
+/* GET /api/stats/checkpoint: download binary CRC-32 backup of all stats. */
+static esp_err_t stats_checkpoint_get(httpd_req_t *req){
+    Work w;
+    size_t n;
+    esp_err_t e;
+    if (!gate(req)) return ESP_OK;
+    if (!work_take(&w, FW_AN_BLOB_MAX)) return error(req, "503 Service Unavailable", "busy, try again");
+    n = fw_stats_checkpoint_save((uint8_t *)w.b, w.cap);
+    if (!n) {
+        work_give(&w, 0);
+        return error(req, "500 Internal Server Error", "could not save backup");
+    }
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=\"freebirdwall-stats.fwan\"");
+    e = httpd_resp_send(req, w.b, (ssize_t)n);
+    work_give(&w, 0);
+    return e;
+}
+
+/* POST /api/stats/checkpoint: restore binary CRC-32 backup uploaded from browser. */
+static esp_err_t stats_checkpoint_post(httpd_req_t *req){
+    Work w;
+    int got = 0;
+    bool ok;
+    if (!gate(req)) return ESP_OK;
+    if (req->content_len < 16 || req->content_len > FW_AN_BLOB_MAX)
+        return error(req, "400 Bad Request", "invalid backup size");
+    if (!work_take(&w, FW_AN_BLOB_MAX)) return error(req, "503 Service Unavailable", "busy, try again");
+    while (got < (int)req->content_len) {
+        int r = httpd_req_recv(req, w.b + got, req->content_len - got);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
+        if (r <= 0) { work_give(&w, 0); return ESP_FAIL; }
+        got += r;
+    }
+    ok = fw_stats_checkpoint_load((const uint8_t *)w.b, (size_t)got);
+    work_give(&w, 0);
+    if (!ok) return error(req, "400 Bad Request", "invalid or corrupted backup file");
+    return reply(req, "200 OK", "{\"ok\":true}");
+}
+
+/* POST /api/stats/sync: trigger immediate backup to the configured LAN/NAS URL. */
+static esp_err_t stats_sync_post(httpd_req_t *req){
+    FwStatsSyncStatus st;
+    char out[160];
+    if (!gate(req)) return ESP_OK;
+    fw_stats_sync_request();
+    fw_stats_sync_status(&st);
+    if (!st.configured) return error(req, "400 Bad Request", "no backup server URL configured");
+    snprintf(out, sizeof out, "{\"configured\":true,\"pending\":%s,\"ok\":%s,\"status\":%d,\"at\":%u}",
+             st.pending ? "true" : "false", st.ok ? "true" : "false", st.status, (unsigned)st.last_at);
+    return reply(req, "202 Accepted", out);
+}
+
+/* GET /api/explore: latest on-demand worldwide airspace snapshot. */
+static esp_err_t explore_get(httpd_req_t *req){
+    size_t cap = 8192, n;
     Work w;
     esp_err_t e;
     if (!gate(req)) return ESP_OK;
     if (!work_take(&w, cap)) return error(req, "503 Service Unavailable", "busy, try again");
-    n = fw_stats_json(w.b, cap);
-    e = n < cap ? reply(req, "200 OK", w.b) : error(req, "500 Internal Server Error", "stats too large");
+    n = fw_explore_json(w.b, w.cap);
+    e = n < w.cap ? reply(req, "200 OK", w.b) : error(req, "500 Internal Server Error", "explore too large");
     work_give(&w, 0);
     return e;
+}
+
+/* POST /api/explore: {"lat":40.64,"lon":-73.78,"dist":25} -> queue live adsb.fi lookup. */
+static esp_err_t explore_post(httpd_req_t *req){
+    char *b;
+    cJSON *j;
+    const cJSON *lat, *lon, *dist;
+    bool ok;
+    if (!gate(req)) return ESP_OK;
+    if (!(b = body(req))) return ESP_OK;
+    j = cJSON_Parse(b);
+    free(b);
+    lat = cJSON_GetObjectItemCaseSensitive(j, "lat");
+    lon = cJSON_GetObjectItemCaseSensitive(j, "lon");
+    dist = cJSON_GetObjectItemCaseSensitive(j, "dist");
+    if (!cJSON_IsNumber(lat) || !cJSON_IsNumber(lon)) {
+        cJSON_Delete(j);
+        return error(req, "400 Bad Request", "lat and lon required");
+    }
+    ok = fw_explore_request(lat->valuedouble, lon->valuedouble, cJSON_IsNumber(dist) ? (int)dist->valuedouble : 25);
+    cJSON_Delete(j);
+    if (!ok) return error(req, "429 Too Many Requests", "wait a few seconds between explore requests");
+    return reply(req, "202 Accepted", "{\"pending\":true}");
 }
 
 /* The wall's recent status lines (wall_log.h) for the dashboard's Console:
@@ -656,6 +749,11 @@ void fw_dashboard_api_register(httpd_handle_t h){
         {.uri = "/api/settings/import", .method = HTTP_GET, .handler = settings_import_get},
         {.uri = "/api/aliases", .method = HTTP_PUT, .handler = aliases_put},
         {.uri = "/api/stats", .method = HTTP_GET, .handler = stats_get},
+        {.uri = "/api/stats/checkpoint", .method = HTTP_GET, .handler = stats_checkpoint_get},
+        {.uri = "/api/stats/checkpoint", .method = HTTP_POST, .handler = stats_checkpoint_post},
+        {.uri = "/api/stats/sync", .method = HTTP_POST, .handler = stats_sync_post},
+        {.uri = "/api/explore", .method = HTTP_GET, .handler = explore_get},
+        {.uri = "/api/explore", .method = HTTP_POST, .handler = explore_post},
         {.uri = "/api/log", .method = HTTP_GET, .handler = log_get},
         {.uri = "/api/sync", .method = HTTP_GET, .handler = sync_get},
         {.uri = "/api/sync", .method = HTTP_PUT, .handler = sync_put},

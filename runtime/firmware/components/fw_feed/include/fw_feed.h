@@ -22,6 +22,8 @@ extern "C" {
 
 typedef struct {
     FwFlight flights[FW_FEED_MAX_FLIGHTS];
+    double lat[FW_FEED_MAX_FLIGHTS]; /* optional lat/lon if vendor feed includes them; NAN when absent */
+    double lon[FW_FEED_MAX_FLIGHTS];
     int count;                       /* records kept (extras beyond 5 skipped) */
     bool tracked;                    /* the last of f/tf seen was tf */
     int overflow;                    /* ov */
@@ -120,6 +122,10 @@ FwFlightSource fw_feed_source(const char *config_json);
  * (owned_config.follow_app; SETTINGS.md "Changes made in the app"). Anything
  * but false follows them, the default. */
 bool fw_feed_follow_app(const char *config_json);
+
+/* Owned: optional LAN/NAS stats backup server URL (owned_config.stats_url,
+ * e.g. "http://192.168.1.50:8090"); writes "" when unset. */
+void fw_feed_stats_url(const char *config_json, char *out, size_t cap);
 
 /* ------------------------------------------------------------ HTTP response */
 

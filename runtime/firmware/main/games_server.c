@@ -381,7 +381,7 @@ bool fw_games_start(void){
     c.server_port = FW_GAMES_PORT;
     c.ctrl_port = 32772;
     c.max_open_sockets = MAX_CLIENTS + 2;    /* the phones' game connections stay; the rest for pages */
-    c.max_uri_handlers = 32;
+    c.max_uri_handlers = 40;
     c.stack_size = 6144;                      /* settings edits parse JSON */
     c.lru_purge_enable = true;
     c.backlog_conn = 2;                       /* connections waiting to be accepted hold their requests' memory */

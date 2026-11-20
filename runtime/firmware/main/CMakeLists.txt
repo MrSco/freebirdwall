@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "app_main.c" "memory_probe.c" "route_probe.cpp" "owner_descriptor.c" "display.cpp" "setup_server.c" "saved_networks.c" "wifi_link.c" "games_server.c" "owned_settings.c" "owner_update.c" "feed.c" "aliases.c" "settings_store.c" "dashboard_api.c" "community.cpp" "big_buffer.c" "stats.c" "crash_guard.c" "wall_log.c" "board_check.c" "sync_store.c" "app_settings.cpp" "aero_key.c" "panic_note.c" "position_fix.cpp" "net_watch.c" "weather.cpp" "vendor_images.cpp"
+    SRCS "app_main.c" "memory_probe.c" "route_probe.cpp" "owner_descriptor.c" "display.cpp" "setup_server.c" "saved_networks.c" "wifi_link.c" "games_server.c" "owned_settings.c" "owner_update.c" "feed.c" "aliases.c" "settings_store.c" "dashboard_api.c" "community.cpp" "big_buffer.c" "stats.c" "explore.cpp" "crash_guard.c" "wall_log.c" "board_check.c" "sync_store.c" "app_settings.cpp" "aero_key.c" "panic_note.c" "position_fix.cpp" "net_watch.c" "weather.cpp" "vendor_images.cpp"
          "../../../shared/owner_ota.c" "../../../shared/owner_sha256.c"
          "../../../shared/owner_alias.c"
     INCLUDE_DIRS "."

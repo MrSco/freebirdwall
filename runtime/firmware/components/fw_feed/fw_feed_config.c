@@ -227,6 +227,18 @@ bool fw_feed_follow_app(const char *config_json){
     return follow;
 }
 
+void fw_feed_stats_url(const char *config_json, char *out, size_t cap){
+    cJSON *root;
+    const char *s;
+    if (!cap) return;
+    out[0] = 0;
+    if (!config_json) return;
+    root = cJSON_Parse(config_json);
+    s = str(item(root, "owned_config"), "stats_url");
+    if (s && strncmp(s, "http://", 7) == 0) copy(out, cap, s, "");
+    cJSON_Delete(root);
+}
+
 /* A zone offset in minutes: the number under key in o, else dflt. */
 static int16_t zone_offset(const cJSON *o, int16_t dflt, const char *key){
     const cJSON *v = item(o, key);

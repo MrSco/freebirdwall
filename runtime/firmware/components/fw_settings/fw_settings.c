@@ -294,11 +294,22 @@ static bool v_landed(Ctx *c, const char *f, const cJSON *v){
     return d == 5 || d == 15 || d == 30 || fail(c, f, "must be 5, 15 or 30 minutes");
 }
 ENUM(v_assets, "auto", "off")
+static bool v_stats_url(Ctx *c, const char *f, const cJSON *v){
+    const char *s = cJSON_IsString(v) ? v->valuestring : NULL;
+    size_t n;
+    if (!s) return fail(c, f, "must be a URL or empty");
+    n = strlen(s);
+    if (n == 0) return true;
+    if (n > 96 || strncmp(s, "http://", 7) != 0 || n <= 7) return fail(c, f, "http://host[:port][/path], at most 96 characters");
+    for (size_t i = 0; i < n; ++i)
+        if ((unsigned char)s[i] <= 0x20 || (unsigned char)s[i] >= 0x7f) return fail(c, f, "plain ASCII without spaces");
+    return true;
+}
 static const Rule OWNED[] = {{"flight_source", v_source}, {"follow_app", v_bool}, {"tracking_source", v_tracking},
                              {"scroll_speed", v_scroll}, {"progress_bar", v_bool}, {"heartbeat_enabled", v_bool},
                              {"weather_station", v_station}, {"tracked_landed_minutes", v_landed},
                              {"vendor_images", v_assets}, {"clock_in_rotation", v_bool},
-                             {"weather_in_rotation", v_bool}, {NULL, NULL}};
+                             {"weather_in_rotation", v_bool}, {"stats_url", v_stats_url}, {NULL, NULL}};
 
 static const Rule REQUEST[] = {{"radius_requests", v_zones}, {"data_filters", v_filters},
                                {"tracked_flights", v_tracked}, {NULL, NULL}};
