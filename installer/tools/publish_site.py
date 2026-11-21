@@ -3,9 +3,10 @@
     py installer/tools/build_installer.py
     py installer/tools/publish_site.py
 
-Copies installer/dist/freebirdwall-installer.html to docs/index.html (the
-page at https://mrsco.github.io/freebirdwall/) and docs/freebirdwall-installer.html
-(the same page, to save and use offline). The page carries the unpackaged
+Copies installer/dist/freebirdwall-installer.html to docs/install/index.html
+(the page at https://mrsco.github.io/freebirdwall/install/) and
+docs/freebirdwall-installer.html (the same page, to save and use offline).
+docs/index.html is the hand-written home page and is left alone. The page carries the unpackaged
 firmware only; each wall gets its own key in the browser. If the desk's
 private connection file (desk/device.json, git-ignored) is present, its key
 must not appear in the page.
@@ -27,9 +28,11 @@ def main():
         token = json.loads(device.read_text(encoding='utf-8')).get('token', '')
         if token and (token.encode() in page or token.upper().encode() in page):
             sys.exit('the page contains this wall\'s key; not publishing')
-    for name in ('index.html', 'freebirdwall-installer.html'):
-        (ROOT / 'docs' / name).write_bytes(page)
-    print('docs/index.html and docs/freebirdwall-installer.html updated (%.1f MB)' % (len(page) / 1048576))
+    for name in ('install/index.html', 'freebirdwall-installer.html'):
+        target = ROOT / 'docs' / name
+        target.parent.mkdir(exist_ok=True)
+        target.write_bytes(page)
+    print('docs/install/index.html and docs/freebirdwall-installer.html updated (%.1f MB)' % (len(page) / 1048576))
 
 
 if __name__ == '__main__':
