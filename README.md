@@ -2,6 +2,8 @@
 
 <img src="docs/images/wall.jpg" alt="A FlightWall mini showing a JetBlue flight from Fort Lauderdale to Raleigh-Durham" width="640">
 
+[Install](#install-it) · [Dashboard](#using-the-dashboard) · [Analytics](#analytics--stats) · [Games](#play-games-on-the-wall) · [Stats backup](#back-up-your-stats-optional) · [Going back](#going-back) · [Troubleshooting](#if-something-goes-wrong)
+
 **FreeBirdWall** is free firmware for the **FlightWall mini**, the LED panel that shows the planes flying over your home. It
 keeps everything the wall already does, needs no subscription, and adds:
 
@@ -119,6 +121,21 @@ changed only in the dashboard stays. You can turn this off under **Device**.
 
 ---
 
+## Analytics & Stats
+
+Open the **Stats** tab to see everything your wall has watched — completely free, computed right on the wall with no cloud account or subscription.
+
+| Flight-path heat map | Traffic & rare aircraft | Top airports, aircraft & airlines |
+| :---: | :---: | :---: |
+| <img src="docs/images/dashboard-stats.jpg" alt="Stats overview showing glowing flight-path heat map across JFK and LaGuardia" width="240"> | <img src="docs/images/dashboard-stats-rare.jpg" alt="Traffic KPIs, rare aircraft badges including Beluga, A380, and 747-8, and last 48 hours chart" width="240"> | <img src="docs/images/dashboard-stats-airports.jpg" alt="Top arrival airports with distances and share bars" width="240"> |
+
+- **Flight-path heat map.** Every live aircraft position paints glowing corridors across all of your watch areas on a dark map (switch between **All areas** or zoom into any individual area).
+- **Today, This week, and Last 30 days.** Switch timeframes with one tap across **Overview**, **Airports** (departures & arrivals), **Aircraft** (most common types), and **Airlines**.
+- **Rare aircraft badges.** Automatically spots **One of a kind**, **Very rare**, and **Notable** aircraft against a built-in global fleet rarity table.
+- **Explore anywhere in the world.** Tap **Change** on the area bar to search any city or airport worldwide and watch live traffic and flight trails anywhere on Earth.
+
+---
+
 ## Play games on the wall
 
 <a href="https://mrsco.github.io/freebirdwall/videos/freebirdwall-demo.mp4"><img src="docs/images/games-breakout.gif" alt="Breakout on the wall, played by dragging a finger on a phone" width="480"></a>
@@ -142,12 +159,18 @@ flights.
 
 ## Back up your stats (optional)
 
-To avoid wearing out the wall's flash memory, your stats and heat map live in RAM while the wall is running. If you want your history to survive reboots and firmware updates, you can either:
+To keep your wall's flash memory from wearing out, your stats and heat map live in RAM while the wall runs. If you want your 30-day history and heat map to survive power outages, reboots, and firmware updates, pick either option:
 
-- **Save/restore manually in the browser:** open **Stats → Persistence & backup** and use **Download backup** / **Restore backup** (`.fwan` file).
-- **Auto-backup to a computer, Raspberry Pi, or NAS on your Wi-Fi:** run the zero-dependency [`desk/stats_server.py`](desk/stats_server.py) script (Python 3 standard library only — no packages to install). The wall talks to it over plain HTTP (`GET`/`PUT /checkpoint`) rather than Windows SMB/UNC paths so it uses almost no RAM on the wall.
+| Option | How it works | Best for |
+|---|---|---|
+| **Manual download** | Open **Stats → Persistence & backup** and tap **Download backup** / **Restore backup** (`.fwan` file). | Quick occasional backups — no setup required. |
+| **Automatic LAN / NAS backup** | Run the tiny zero-dependency [`desk/stats_server.py`](desk/stats_server.py) script on a PC, Raspberry Pi, or NAS on your Wi-Fi. The wall auto-saves every 15 minutes and restores automatically on reboot. | Hands-off persistence across reboots & updates. |
 
-### Windows PC / Windows NAS
+> [!NOTE]
+> **Why an HTTP server instead of a `\\NAS\share` folder path?** The wall's ESP32-S3 has only ~35 KiB of free RAM, which isn't enough for a Windows SMB file-sharing client. Plain HTTP (`GET`/`PUT /checkpoint`) uses almost no RAM, and [`desk/stats_server.py`](desk/stats_server.py) uses only Python 3's standard library (zero packages to install).
+
+<details>
+<summary><strong>Windows PC / Windows NAS setup (auto-starts invisibly on boot)</strong></summary>
 
 1. Copy [`desk/stats_server.py`](desk/stats_server.py) onto your Windows PC or NAS (for example `C:\FreeBirdWall\stats_server.py`). Install Python 3 if needed (`winget install Python.Python.3.12`).
 2. Test it in PowerShell, pointing `--dir` at any local or shared folder:
@@ -159,7 +182,7 @@ To avoid wearing out the wall's flash memory, your stats and heat map live in RA
    ```powershell
    New-NetFirewallRule -DisplayName "FreeBirdWall Stats Backup" -Direction Inbound -Protocol TCP -LocalPort 8090 -Profile Private -Action Allow
    ```
-4. Auto-start invisibly when Windows boots (run once in an **Admin PowerShell** — runs in the background with no terminal window, even before login):
+4. Auto-start invisibly when Windows boots (run once in an **Admin PowerShell** — runs in the background with no terminal window, even before anyone logs in):
    ```powershell
    $pyw = (Get-Command pythonw.exe).Source
    $action = New-ScheduledTaskAction -Execute $pyw -Argument 'C:\FreeBirdWall\stats_server.py --port 8090 --dir "D:\YourShare\freebirdwall-stats"'
@@ -169,7 +192,10 @@ To avoid wearing out the wall's flash memory, your stats and heat map live in RA
    Start-ScheduledTask -TaskName "FreeBirdWallStatsBackup"
    ```
 
-### Docker (Synology, Unraid, TrueNAS, QNAP, Linux)
+</details>
+
+<details>
+<summary><strong>Docker setup (Synology, Unraid, TrueNAS, QNAP, Linux)</strong></summary>
 
 Copy [`desk/stats_server.py`](desk/stats_server.py) into a folder on your NAS (e.g. `/path/on/nas/freebirdwall`) and run:
 
@@ -181,17 +207,21 @@ docker run -d --name freebirdwall-stats --restart unless-stopped \
   python /data/stats_server.py --port 8090 --dir /data
 ```
 
-### Linux / Mac / Raspberry Pi (Python 3 directly)
+</details>
+
+<details>
+<summary><strong>Linux / Mac / Raspberry Pi setup (Python 3 directly)</strong></summary>
 
 ```bash
 python3 desk/stats_server.py --port 8090 --dir ./freebirdwall-stats
 ```
 
-### Connect the wall
+</details>
 
-1. Verify the server is reachable by opening `http://<server-ip>:8090/health` in your browser (you should see `{"ok": true, ...}`).
-2. In the wall dashboard, open **Stats → Persistence & backup**, enter `http://<server-ip>:8090`, and press **Save**.
-3. Press **Back up now** to verify `checkpoint.fwan` is created. From then on, the wall automatically backs up every 15 minutes when new flights arrive and restores automatically on reboot.
+**Connect your wall (3 steps):**
+1. Open `http://<server-ip>:8090/health` in a browser — you should see `{"ok": true, ...}`.
+2. In the wall dashboard, go to **Stats → Persistence & backup**, enter `http://<server-ip>:8090`, and press **Save**.
+3. Press **Back up now** and confirm `checkpoint.fwan` appears in your backup folder.
 
 ---
 
