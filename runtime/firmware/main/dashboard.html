@@ -176,6 +176,10 @@ details.adv[open] summary{margin-bottom:8px}
 .an-b2{background:rgba(205,90,255,.18);color:#e49bff;border:1px solid rgba(205,90,255,.45)}
 .an-b1{background:rgba(46,197,216,.16);color:#6be3f2;border:1px solid rgba(46,197,216,.4)}
 .an-presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.an-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.an-hd h2{margin:0}
+.an-delta{display:inline-block;font-size:12px;font-weight:600;margin-left:6px;vertical-align:2px}
+.an-up{color:var(--ok)}.an-dn{color:var(--bad)}
 </style>
 </head>
 <body>
@@ -499,7 +503,7 @@ function altIn(p,label){var v=get(st.work,p),u=altUnit();
 function viewAreas(zones){var Q='request_config.radius_requests.';
  if(st.areaOpen>=zones.length)st.areaOpen=-1;
  return card('Areas to watch','Up to five circles; flights inside any of them are shown. Open an area, then tap the map or drag its pin to move it.',
-  '<div id="map-slot"></div><div class="areas">'+zones.map(function(z,i){var p=Q+i,o=st.areaOpen===i;
+  '<div id="map-slot"></div><div class="btns" style="margin-top:8px"><button type="button" class="btn small" id="see-paths">See the flight paths →</button></div><div class="areas">'+zones.map(function(z,i){var p=Q+i,o=st.areaOpen===i;
    return '<div class="area'+(o?' open':'')+'" data-field="'+p+'"><button type="button" class="area-head" data-area="'+i+'" aria-expanded="'+o+'"><span class="area-dot" style="background:'+areaColor(i)+'"></span>'+
     '<span class="area-name">'+(esc(z.name)||'Area '+(i+1))+'</span><span class="tags"><span class="tag" id="radt'+i+'">'+(z.latitude==null?'Not placed yet':esc(fmtR(z.radius_km||25)))+'</span><span class="tag">'+esc(altText(z))+'</span></span><span class="chev" aria-hidden="true"></span></button>'+
     (o?areaBody(z,i,p,zones.length):'')+'</div>'}).join('')+'</div>'+
@@ -590,6 +594,7 @@ function areasWire(root){
   l.push(c?{latitude:round5(c.lat),longitude:wrapLon(c.lng),radius_km:8}:{radius_km:8});st.areaOpen=l.length-1;MAP.fitted=-3;changed();render();
   if(!c){var q=MAP.el&&$('input',MAP.el);if(q)q.focus()}};
  $$('[data-del-zone]',root).forEach(function(b){b.onclick=function(){listAt('request_config.radius_requests').splice(+b.dataset.delZone,1);st.areaOpen=-1;changed();render()}});
+ var sp=$('#see-paths',root);if(sp)sp.onclick=function(){AN.sub='overview';AN.ex=null;AN.picker=false;st.tab='stats';store('fwtab','stats');nav();render();window.scrollTo(0,0)};
  mapMount(root)}
 function speedIn(k,label){var p='request_config.data_filters.'+k,v=get(st.work,p);
  return '<div class="field" data-field="'+p+'"><label for="'+idOf(p)+'">'+label+'<small>Knots, optional</small></label><input type="number" id="'+idOf(p)+'" min="0" max="777" step="10" inputmode="numeric" data-speed="'+p+'" value="'+(v!=null&&v>=0?Math.round(v/KTS):'')+'"></div>'}
@@ -899,7 +904,7 @@ function anPaintHeat(){
  ctx.globalCompositeOperation='source-over'}
 
 function anViewBounds(L){
- var zones=(get(st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
+ var zones=(get(st.work||st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
  if(AN.ex){
   var rKm=AN.ex.dist*1.852,cl=Math.max(0.05,Math.cos(AN.ex.lat*Math.PI/180));
   var dl=rKm/111.32,do_=rKm/(111.32*cl);
@@ -928,7 +933,7 @@ function anDrawAreas(L){
  if(AN.ex){
   L.circle([AN.ex.lat,AN.ex.lon],{radius:AN.ex.dist*1852,color:'#2ec5d8',weight:1.2,dashArray:'4 5',opacity:0.45,fill:false,interactive:false}).addTo(AN.areasLayer);
   return}
- var zones=(get(st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
+ var zones=(get(st.work||st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
  zones.forEach(function(z,i){
   var sel=AN.areaIdx===i;
   L.circle([z.latitude,z.longitude],{radius:(z.radius_km||15)*1000,color:sel?'#ffd15c':'#2ec5d8',weight:sel?2:1.2,
@@ -969,19 +974,208 @@ function anRareRow(r){
  return '<li>'+alIconHtml(al)+'<div class="an-info"><div class="an-name">'+esc(name)+(code&&AC_NAMES[code]?' <span class="muted" style="font-weight:400;font-size:13px">'+esc(code)+'</span>':'')+'</div>'+
   '<div class="an-subt">'+esc(meta)+'</div></div><span class="an-badge an-b'+tier+'">'+esc(RARE_LBL[tier]||'Rare')+'</span></li>'}
 
+function anCard(title,sub,body,shareKind){
+ return '<section class="card"><div class="an-hd"><h2>'+title+'</h2>'+
+  (shareKind?'<button type="button" class="btn small" data-share="'+shareKind+'">Share</button>':'')+
+  '</div>'+(sub?'<p class="sub">'+sub+'</p>':'')+body+'</section>'}
+
 function anRankList(items,total,kind,refLat,refLon){
  if(!items.length)return '<p class="muted" style="margin:6px 0 0">No data yet for this period.</p>';
  var max=items[0][1]||1,denom=total||items.reduce(function(s,x){return s+x[1]},0)||1;
  return '<ul class="an-list">'+items.map(function(x,i){
-  var k=x[0],n=x[1],pct=Math.max(1,Math.round(100*n/denom)),w=Math.max(4,100*n/max),ico='',title=k,sub='';
+  var k=x[0],n=x[1],pct=Math.max(1,Math.round(100*n/denom)),w=Math.max(4,100*n/max),ico='',title=k,sub='',badge='';
   if(kind==='airline'){ico=alIconHtml(k);title=AL_NAMES[k]||k;sub=AL_NAMES[k]?k:''}
   else if(kind==='type'){var rt=RARE_JS[k];ico='<span class="an-ico" style="font-size:10px">'+esc(k.slice(0,4))+'</span>';
-   title=AC_NAMES[k]||k;sub=(AC_NAMES[k]?k:'Aircraft type')+(rt?' · '+RARE_LBL[rt]:'')}
+   title=AC_NAMES[k]||k;sub=AC_NAMES[k]?k:'Aircraft type';
+   if(rt)badge=' <span class="an-badge an-b'+rt+'" style="margin-left:6px;vertical-align:1px">'+esc(RARE_LBL[rt])+'</span>'}
   else{var ap=apInfo(k);ico='<span class="an-ico">'+esc(k.slice(0,4))+'</span>';title=ap.name!==k?(k+' · '+ap.name):k;
    sub=(ap.lat!=null&&refLat!=null)?fmtDistKm(havKm(refLat,refLon,ap.lat,ap.lon)):''}
-  return '<li class="an-row"><span class="an-rk">'+(i+1)+'</span>'+ico+'<div class="an-info"><div class="an-name">'+esc(title)+'</div>'+
+  return '<li class="an-row"><span class="an-rk">'+(i+1)+'</span>'+ico+'<div class="an-info"><div class="an-name">'+esc(title)+badge+'</div>'+
    (sub?'<div class="an-subt">'+esc(sub)+'</div>':'')+'</div><div class="an-val"><b>'+n.toLocaleString()+'</b><small>'+pct+'%</small></div>'+
    '<div class="an-barw"><div class="an-barf" style="width:'+w+'%"></div></div></li>'}).join('')+'</ul>'}
+
+function anDelta(days,curDay,span,agg){
+ /* Coverage-gated comparison: omitted when either period has too little watched time. */
+ if(span!==1&&span!==7)return null;
+ var prev=anAgg(days,curDay-span,span);
+ var minCur=span===1?120:1440,minPrev=span===1?720:5040,minFl=span===1?5:10;
+ if(agg.mins<minCur||prev.mins<minPrev||prev.flights<minFl)return null;
+ var curR=agg.flights/(agg.mins/60),prevR=prev.flights/(prev.mins/60);
+ if(prevR<=0)return null;
+ var pct=Math.round(100*(curR-prevR)/prevR);
+ return {pct:pct,label:span===1?'vs yesterday':'vs prior 7d'}}
+
+function anRoundRect(ctx,x,y,w,h,r){
+ ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+ ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+
+function anShareCard(kind){
+ if(!AN.data)return;
+ var j=AN.data,S=j.stats||{hours:[],days:[],rare:[],rare_total:0,heat:null};
+ var days={};(S.days||[]).forEach(function(d){days[d[0]]=d});
+ var span=AN.period==='today'?1:AN.period==='week'?7:30;
+ var agg=anAgg(days,j.day,span),exMode=!!AN.ex,exS=exMode?anExploreStats():null;
+ var pLbl=exMode?'Live snapshot':(AN.period==='today'?'Today':AN.period==='week'?'This week':'Last 30 days');
+ var W=1080,H=kind==='map'?1160:kind==='traffic'?760:1140;
+ var cv=document.createElement('canvas');cv.width=W;cv.height=H;
+ var ctx=cv.getContext('2d');
+ /* Outer dark frame */
+ ctx.fillStyle='#0b0e14';ctx.fillRect(0,0,W,H);
+ ctx.fillStyle='#141923';anRoundRect(ctx,40,40,W-80,H-80,32);ctx.fill();
+ ctx.strokeStyle='#263042';ctx.lineWidth=3;anRoundRect(ctx,40,40,W-80,H-80,32);ctx.stroke();
+ /* Header (never prints area name or location for privacy) */
+ var titles={map:'Flight paths',traffic:'Traffic summary',rare:'Rare aircraft',
+  airports:AN.apDir==='dep'?'Top departure airports':'Top arrival airports',
+  aircraft:'Most common aircraft',airlines:'Most common airlines'};
+ ctx.fillStyle='#f3f6fb';ctx.font='700 46px system-ui,-apple-system,Segoe UI,sans-serif';
+ ctx.fillText(titles[kind]||'Analytics',88,126);
+ /* Timeframe pill */
+ ctx.font='600 26px system-ui,-apple-system,Segoe UI,sans-serif';
+ var pw=ctx.measureText(pLbl).width+44;
+ ctx.fillStyle='rgba(46,197,216,0.16)';anRoundRect(ctx,W-88-pw,86,pw,50,25);ctx.fill();
+ ctx.strokeStyle='rgba(46,197,216,0.45)';ctx.lineWidth=2;anRoundRect(ctx,W-88-pw,86,pw,50,25);ctx.stroke();
+ ctx.fillStyle='#6be3f2';ctx.fillText(pLbl,W-88-pw+22,120);
+
+ if(kind==='map'){
+  var mx=88,my=176,mw=W-176,mh=690;
+  ctx.save();anRoundRect(ctx,mx,my,mw,mh,24);ctx.clip();
+  ctx.fillStyle='#080b12';ctx.fillRect(mx,my,mw,mh);
+  /* Subtle radar grid + concentric range rings (no map labels -> privacy-safe) */
+  ctx.strokeStyle='rgba(148,176,214,0.10)';ctx.lineWidth=1.5;
+  for(var gx=mx+mw/6;gx<mx+mw;gx+=mw/6){ctx.beginPath();ctx.moveTo(gx,my);ctx.lineTo(gx,my+mh);ctx.stroke()}
+  for(var gy=my+mh/6;gy<my+mh;gy+=mh/6){ctx.beginPath();ctx.moveTo(mx,gy);ctx.lineTo(mx+mw,gy);ctx.stroke()}
+  var cx=mx+mw/2,cy=my+mh/2,rad=Math.min(mw,mh)*0.42;
+  ctx.setLineDash([8,10]);ctx.strokeStyle='rgba(46,197,216,0.28)';ctx.lineWidth=2;
+  [0.35,0.68,1].forEach(function(f){ctx.beginPath();ctx.arc(cx,cy,rad*f,0,6.2832);ctx.stroke()});
+  ctx.setLineDash([]);
+  /* Glowing heat corridors */
+  var h=S.heat;
+  if(exMode&&AN.exPts.length){
+   var rKm=AN.ex.dist*1.852,cl=Math.max(0.05,Math.cos(AN.ex.lat*Math.PI/180));
+   var dl=rKm/111.32,do_=rKm/(111.32*cl);
+   ctx.lineCap='round';
+   AN.exPts.forEach(function(p){
+    var px=mx+(p[1]-(AN.ex.lon-do_))/(2*do_)*mw,py=my+((AN.ex.lat+dl)-p[0])/(2*dl)*mh;
+    var trk=p[2];
+    if(trk>=0){var a=(90-trk)*Math.PI/180,x2=px-Math.cos(a)*28,y2=py+Math.sin(a)*28;
+     var gr=ctx.createLinearGradient(px,py,x2,y2);
+     gr.addColorStop(0,'rgba(255,220,90,.9)');gr.addColorStop(1,'rgba(120,25,165,0)');
+     ctx.strokeStyle=gr;ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(x2,y2);ctx.stroke()}
+    var rg=ctx.createRadialGradient(px,py,0,px,py,20);
+    rg.addColorStop(0,'rgba(255,245,190,.9)');rg.addColorStop(.5,'rgba(248,120,50,.45)');rg.addColorStop(1,'rgba(110,24,160,0)');
+    ctx.fillStyle=rg;ctx.beginPath();ctx.arc(px,py,20,0,6.2832);ctx.fill()});
+  }else if(h&&h.cells&&h.cells.length){
+   var n=h.n||40,maxV=1;h.cells.forEach(function(e){if(e[1]>maxV)maxV=e[1]});
+   ctx.globalCompositeOperation='lighter';
+   var cellR=Math.max(18,Math.min(mw,mh)/n*1.55);
+   h.cells.forEach(function(e){
+    var idx=e[0],v=e[1],cx0=idx%n,cy0=Math.floor(idx/n);
+    var px=mx+(cx0+0.5)/n*mw,py=my+(cy0+0.5)/n*mh;
+    var col=heatColor(Math.max(0.22,Math.pow(v/maxV,0.6)));
+    var rg=ctx.createRadialGradient(px,py,0,px,py,cellR);
+    rg.addColorStop(0,'rgba('+col[0]+','+col[1]+','+col[2]+','+col[3].toFixed(2)+')');
+    rg.addColorStop(.55,'rgba('+col[0]+','+col[1]+','+col[2]+','+(col[3]*0.45).toFixed(2)+')');
+    rg.addColorStop(1,'rgba('+col[0]+','+col[1]+','+col[2]+',0)');
+    ctx.fillStyle=rg;ctx.beginPath();ctx.arc(px,py,cellR,0,6.2832);ctx.fill()});
+   ctx.globalCompositeOperation='source-over';
+  }else{
+   ctx.fillStyle='#8c9bb0';ctx.font='500 28px system-ui,sans-serif';ctx.textAlign='center';
+   ctx.fillText('Collecting flight-path positions…',cx,cy);ctx.textAlign='left'}
+  ctx.restore();
+  ctx.strokeStyle='#263042';ctx.lineWidth=2;anRoundRect(ctx,mx,my,mw,mh,24);ctx.stroke();
+  /* Legend bar */
+  ctx.fillStyle='#96a5ba';ctx.font='600 24px system-ui,sans-serif';
+  ctx.fillText('Quiet',mx,912);ctx.textAlign='right';ctx.fillText('Busiest',mx+mw,912);ctx.textAlign='left';
+  var lg=ctx.createLinearGradient(mx+90,0,mx+mw-110,0);
+  lg.addColorStop(0,'#2a0b5e');lg.addColorStop(.25,'#7a1fa2');lg.addColorStop(.52,'#d8347a');lg.addColorStop(.78,'#fb8c2c');lg.addColorStop(.92,'#ffe46b');lg.addColorStop(1,'#fffbe0');
+  ctx.fillStyle=lg;anRoundRect(ctx,mx+90,896,mw-200,16,8);ctx.fill();
+  /* 3 footer stat boxes */
+  var daysD=exMode?'Live':h&&h.since?Math.max(0.1,(Date.now()/1000-h.since)/86400).toFixed(1):'0';
+  var boxes=[['FLIGHTS',exMode?String(exS.count):agg.flights.toLocaleString()],
+   [exMode?'TRAILS':'DAYS OF DATA',exMode?String(AN.exPts.length):daysD],
+   ['FIXES',exMode?String(AN.exPts.length):((h&&h.pts)||0).toLocaleString()]];
+  var bw=(mw-32)/3;
+  boxes.forEach(function(b,i){
+   var bx=mx+i*(bw+16),by=946;
+   ctx.fillStyle='#1b2230';anRoundRect(ctx,bx,by,bw,102,18);ctx.fill();
+   ctx.strokeStyle='#263042';ctx.lineWidth=2;anRoundRect(ctx,bx,by,bw,102,18);ctx.stroke();
+   ctx.fillStyle='#8c9bb0';ctx.font='600 20px system-ui,sans-serif';ctx.fillText(b[0],bx+22,by+38);
+   ctx.fillStyle='#f3f6fb';ctx.font='700 34px system-ui,sans-serif';ctx.fillText(b[1],bx+22,by+82)});
+ }else if(kind==='traffic'){
+  var rtPct=agg.flights?Math.round(100*agg.routes/agg.flights):0;
+  var watchTxt=agg.mins<60?(agg.mins+'m'):agg.mins<1440?(Math.floor(agg.mins/60)+'h '+(agg.mins%60)+'m'):(Math.floor(agg.mins/60)+'h');
+  var dl=exMode?null:anDelta(days,j.day,span,agg);
+  var kpis=exMode?[['Live aircraft',String(exS.count),''],['Types seen',String(exS.types.length),''],
+   ['Airlines',String(exS.airlines.length),''],['Rare right now',String(exS.rare.length),'']]:
+   [['Flights',agg.flights.toLocaleString(),dl?((dl.pct>=0?'+':'')+dl.pct+'% '+dl.label):''],
+    ['Routes known',rtPct+'%',''],['Watched',watchTxt,''],['Rare spotted',String(S.rare_total||0),'']];
+  var kw=(W-176-24)/2,kh=190;
+  kpis.forEach(function(k,i){
+   var kx=88+(i%2)*(kw+24),ky=188+Math.floor(i/2)*(kh+24);
+   ctx.fillStyle='#1b2230';anRoundRect(ctx,kx,ky,kw,kh,22);ctx.fill();
+   ctx.strokeStyle='#263042';ctx.lineWidth=2;anRoundRect(ctx,kx,ky,kw,kh,22);ctx.stroke();
+   ctx.fillStyle='#8c9bb0';ctx.font='600 26px system-ui,sans-serif';ctx.fillText(k[0],kx+30,ky+52);
+   ctx.fillStyle='#f3f6fb';ctx.font='700 66px system-ui,sans-serif';ctx.fillText(k[1],kx+30,ky+132);
+   if(k[2]){ctx.fillStyle=dl&&dl.pct>=0?'#3ddc84':'#ff6b6b';ctx.font='600 24px system-ui,sans-serif';ctx.fillText(k[2],kx+30,ky+170)}});
+ }else if(kind==='rare'){
+  var rList=(exMode?exS.rare:(S.rare||[])).slice(0,6);
+  if(!rList.length){ctx.fillStyle='#8c9bb0';ctx.font='500 32px system-ui,sans-serif';ctx.fillText('No rare aircraft spotted yet.',88,240)}
+  var bCol={3:['rgba(255,190,40,.22)','#ffd15c'],2:['rgba(205,90,255,.22)','#e49bff'],1:['rgba(46,197,216,.2)','#6be3f2']};
+  rList.forEach(function(r,i){
+   var ry=188+i*138,code=r[2]||'',name=AC_NAMES[code]||code,tier=r[1]||1;
+   var route=(r[6]&&r[7])?(r[6]+' → '+r[7]):(r[6]||r[7]||'');
+   var meta=[r[3],r[4],route].filter(Boolean).join(' · ');
+   ctx.fillStyle='#1b2230';anRoundRect(ctx,88,ry,W-176,118,20);ctx.fill();
+   ctx.strokeStyle='#263042';ctx.lineWidth=2;anRoundRect(ctx,88,ry,W-176,118,20);ctx.stroke();
+   ctx.fillStyle='#f3f6fb';ctx.font='700 32px system-ui,sans-serif';ctx.fillText(name+(AC_NAMES[code]?' ('+code+')':''),118,ry+54);
+   ctx.fillStyle='#8c9bb0';ctx.font='500 24px system-ui,sans-serif';ctx.fillText(meta||'Spotted overhead',118,ry+92);
+   var lbl=(RARE_LBL[tier]||'Rare').toUpperCase(),bc=bCol[tier]||bCol[1];
+   ctx.font='700 22px system-ui,sans-serif';var bw2=ctx.measureText(lbl).width+36;
+   ctx.fillStyle=bc[0];anRoundRect(ctx,W-118-bw2,ry+38,bw2,44,22);ctx.fill();
+   ctx.fillStyle=bc[1];ctx.fillText(lbl,W-118-bw2+18,ry+68)});
+ }else{
+  var list=kind==='airports'?(AN.apDir==='dep'?agg.orig:agg.dest):
+   kind==='aircraft'?(exMode?exS.types:agg.types):(exMode?exS.airlines:agg.airlines);
+  var denom=kind==='airports'?agg.routes:(kind==='aircraft'?(exMode?exS.count:agg.flights):(exMode?exS.count:agg.flights));
+  list=list.slice(0,8);
+  var max=list.length?list[0][1]||1:1;
+  denom=denom||list.reduce(function(s,x){return s+x[1]},0)||1;
+  if(!list.length){ctx.fillStyle='#8c9bb0';ctx.font='500 32px system-ui,sans-serif';ctx.fillText('No data yet for this period.',88,240)}
+  list.forEach(function(x,i){
+   var k=x[0],n=x[1],pct=Math.max(1,Math.round(100*n/denom)),ry=184+i*108;
+   var name=kind==='airlines'?(AL_NAMES[k]||k):kind==='aircraft'?(AC_NAMES[k]||k):(apInfo(k).name!==k?(k+' · '+apInfo(k).name):k);
+   if(name.length>34)name=name.slice(0,33)+'…';
+   ctx.fillStyle='#8c9bb0';ctx.font='600 28px system-ui,sans-serif';ctx.fillText(String(i+1),92,ry+36);
+   ctx.fillStyle='#f3f6fb';ctx.font='600 30px system-ui,sans-serif';ctx.fillText(name,146,ry+36);
+   if(kind==='aircraft'&&RARE_JS[k]){
+    var rt=RARE_JS[k],rl=(RARE_LBL[rt]||'Rare').toUpperCase(),nx=146+ctx.measureText(name).width+16;
+    ctx.font='700 18px system-ui,sans-serif';var rw=ctx.measureText(rl).width+24;
+    if(nx+rw<W-260){ctx.fillStyle=rt===3?'rgba(255,190,40,.22)':rt===2?'rgba(205,90,255,.22)':'rgba(46,197,216,.2)';
+     anRoundRect(ctx,nx,ry+10,rw,32,16);ctx.fill();
+     ctx.fillStyle=rt===3?'#ffd15c':rt===2?'#e49bff':'#6be3f2';ctx.fillText(rl,nx+12,ry+32)}}
+   ctx.textAlign='right';ctx.fillStyle='#f3f6fb';ctx.font='700 30px system-ui,sans-serif';ctx.fillText(n.toLocaleString(),W-88,ry+34);
+   ctx.fillStyle='#8c9bb0';ctx.font='500 22px system-ui,sans-serif';ctx.fillText(pct+'%',W-88,ry+64);ctx.textAlign='left';
+   ctx.fillStyle='#1b2230';anRoundRect(ctx,146,ry+54,W-340,14,7);ctx.fill();
+   var bg=ctx.createLinearGradient(146,0,W-194,0);bg.addColorStop(0,'#2ec5d8');bg.addColorStop(1,'#6ee7f5');
+   ctx.fillStyle=bg;anRoundRect(ctx,146,ry+54,Math.max(16,(W-340)*(n/max)),14,7);ctx.fill()});
+ }
+ /* Footer */
+ ctx.fillStyle='#6f7e94';ctx.font='500 24px system-ui,sans-serif';
+ ctx.fillText('FreeBirdWall · Analytics',88,H-66);
+ ctx.textAlign='right';ctx.fillText(dayName(j.day),W-88,H-66);ctx.textAlign='left';
+
+ cv.toBlob(function(blob){
+  if(!blob){toast('Could not create image');return}
+  var fname='freebirdwall-'+kind+'.png';
+  try{
+   var file=new File([blob],fname,{type:'image/png'});
+   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file],title:'FreeBirdWall · '+(titles[kind]||'Analytics')}).catch(function(){});
+    return}
+  }catch(e){}
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href)},5000);
+  toast('Image card saved')},'image/png')}
 
 function anExploreStats(){
  var ac=AN.ex&&AN.ex.ac||[],al={},tp={},rare=[];
@@ -1002,7 +1196,7 @@ function statsDraw(j){
  var hours={},days={};(S.hours||[]).forEach(function(h){hours[h[0]]=h});(S.days||[]).forEach(function(d){days[d[0]]=d});
  var span=AN.period==='today'?1:AN.period==='week'?7:30;
  var agg=anAgg(days,j.day,span);
- var zones=(get(st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
+ var zones=(get(st.work||st.doc||{},'request_config.radius_requests')||[]).filter(function(z){return z.latitude!=null&&z.longitude!=null});
  if(AN.areaIdx>=zones.length)AN.areaIdx=-1;
  var zSel=AN.areaIdx>=0?zones[AN.areaIdx]:(zones[0]||{});
  var spH=anHeatSpan(S.heat);
@@ -1023,13 +1217,21 @@ function statsDraw(j){
  var top='<div class="an-top">'+
   (exMode?'':'<div class="seg" role="group" aria-label="Timeframe">'+[['today','Today'],['week','This week'],['month','Last 30 days']].map(function(o){
    return '<button type="button" data-an-p="'+o[0]+'" aria-pressed="'+(AN.period===o[0])+'">'+o[1]+'</button>'}).join('')+'</div>')+
-  '<div class="an-loc"><span>'+locLabel+'</span><button type="button" class="btn small" id="an-chg">'+(AN.picker?'Close':'Change')+'</button></div>';
+  '<div class="an-loc"><span>'+locLabel+'</span><div style="display:flex;gap:6px;flex:none">'+
+  (exMode?'<button type="button" class="btn small primary" id="an-save-ex">'+(zones.length<5?'Add to wall':'Use on wall')+'</button>':'')+
+  '<button type="button" class="btn small" id="an-chg">'+(AN.picker?'Close':'Change')+'</button></div></div>';
 
  if(AN.picker){
   var areaBtns=(zones.length>1?'<button type="button" class="btn small'+(!exMode&&AN.areaIdx<0?' primary':'')+'" data-an-z="-1">All '+zones.length+' areas</button>':'')+
    zones.map(function(z,i){return '<button type="button" class="btn small'+(!exMode&&(AN.areaIdx===i||(zones.length===1&&AN.areaIdx<0))?' primary':'')+'" data-an-z="'+i+'">'+esc(z.name||('Area '+(i+1)))+'</button>'}).join('');
-  top+=card('Choose area or explore','Zoom to any of your wall’s watch areas (your wall records all of them together), or explore live airspace anywhere in the world via adsb.fi.',
-   '<div class="btns" style="margin-top:4px">'+areaBtns+'</div>'+
+  var editIdx=!exMode?(AN.areaIdx>=0?AN.areaIdx:(zones.length===1?0:-1)):-1;
+  var radHtml='';
+  if(editIdx>=0&&zones[editIdx]){
+   var zEd=zones[editIdx],kmEd=zEd.radius_km||15;
+   radHtml='<div class="field" style="margin-top:8px"><label for="an-rad">Radius for '+esc(zEd.name||('Area '+(editIdx+1)))+'<small>Press Save below to update the display too</small></label>'+
+    '<div class="row"><input type="range" id="an-rad" min="0" max="1000" value="'+rToS(kmEd)+'" data-an-rad="'+editIdx+'" aria-label="Area radius"><span class="rangeval" id="an-radv">'+esc(fmtR(kmEd))+'</span></div></div>'}
+  top+=card('Choose area or explore','Switch or resize your watch area (saving updates the display too), or explore live airspace anywhere in the world via adsb.fi.',
+   '<div class="btns" style="margin-top:4px">'+areaBtns+'</div>'+radHtml+
    '<form class="map-search" id="ex-form" style="margin-top:10px"><input type="search" id="ex-q" placeholder="Search any city or airport (e.g. London, SFO, Tokyo)" autocomplete="off"><button class="btn" type="submit">Search</button></form>'+
    '<div class="map-results" id="ex-res"></div>'+
    '<div class="an-presets">'+EX_PRESETS.map(function(p,i){return '<button type="button" class="btn small" data-ex-pre="'+i+'">'+esc(p[0])+'</button>'}).join('')+'</div>'+
@@ -1050,31 +1252,35 @@ function statsDraw(j){
   var heatNote=exMode?'Live positions and heading trails from adsb.fi via your wall.':
    (!h||!h.cells||!h.cells.length)?(community?'Waiting for aircraft positions to build your flight-path corridors.':'FlightWall data does not include coordinates. Turn on Progress bars or switch to Community data to paint flight-path corridors.'):
    'Brighter corridors show heavier traffic ('+(h.pts||0).toLocaleString()+' fixes recorded across all watch areas).';
-  var mapCard=card('Flight paths',heatNote,
+  var mapCard=anCard('Flight paths',heatNote,
    '<div id="an-map-slot"></div>'+
    '<div class="an-scale"><span>Quiet</span><span class="an-grad"></span><span>Busiest</span></div>'+
    '<div class="an-meta"><div><small>Period</small><b>'+esc(periodTxt)+'</b></div>'+
    '<div><small>'+(exMode?'Trails plotted':'Days of data')+'</small><b>'+(exMode?AN.exPts.length:daysData)+'</b></div>'+
-   '<div><small>'+(exMode?'Radius':'Grid cell')+'</small><b>'+(exMode?(AN.ex.dist+' NM'):cellTxt)+'</b></div></div>');
+   '<div><small>'+(exMode?'Radius':'Grid cell')+'</small><b>'+(exMode?(AN.ex.dist+' NM'):cellTxt)+'</b></div></div>','map');
 
   /* Traffic KPIs */
   var rtPct=agg.flights?Math.round(100*agg.routes/agg.flights):0;
   var watchTxt=agg.mins<60?(agg.mins+'m'):agg.mins<1440?(Math.floor(agg.mins/60)+'h '+(agg.mins%60)+'m'):(Math.floor(agg.mins/60)+'h');
-  var kpiCard=card('Traffic',exMode?'Current snapshot of aircraft in this airspace.':'Deduplicated sightings (30-minute revisit window).',
+  var dl=exMode?null:anDelta(days,j.day,span,agg);
+  var dlHtml=dl?('<span class="an-delta '+(dl.pct>=0?'an-up':'an-dn')+'" title="'+esc(dl.label)+'">'+(dl.pct>=0?'+':'')+dl.pct+'%</span>'):'';
+  var kpiSub=exMode?'Current snapshot of aircraft in this airspace.':
+   (dl?('Deduplicated sightings (30-min revisit window) · rate '+dl.label+'.'):'Deduplicated sightings (30-minute revisit window).');
+  var kpiCard=anCard('Traffic',kpiSub,
    exMode?('<div class="an-kpis"><div class="an-kpi"><small>Live aircraft</small><div class="big">'+exS.count+'</div></div>'+
     '<div class="an-kpi"><small>Types seen</small><div class="big">'+exS.types.length+'</div></div>'+
     '<div class="an-kpi"><small>Airlines</small><div class="big">'+exS.airlines.length+'</div></div>'+
     '<div class="an-kpi"><small>Rare right now</small><div class="big">'+exS.rare.length+'</div></div></div>'):
-   ('<div class="an-kpis"><div class="an-kpi"><small>Flights</small><div class="big">'+agg.flights.toLocaleString()+'</div></div>'+
+   ('<div class="an-kpis"><div class="an-kpi"><small>Flights</small><div class="big">'+agg.flights.toLocaleString()+dlHtml+'</div></div>'+
     '<div class="an-kpi"><small>Routes known</small><div class="big">'+rtPct+'%</div></div>'+
     '<div class="an-kpi"><small>Watched</small><div class="big">'+watchTxt+'</div></div>'+
-    '<div class="an-kpi"><small>Rare spotted</small><div class="big">'+(S.rare_total||0)+'</div></div></div>'));
+    '<div class="an-kpi"><small>Rare spotted</small><div class="big">'+(S.rare_total||0)+'</div></div></div>'),'traffic');
 
   /* Rare aircraft badges */
   var rareList=exMode?exS.rare:(S.rare||[]);
-  var rareCard=card('Rare aircraft','One of a kind, very rare, and notable aircraft measured against global fleet rarity.',
+  var rareCard=anCard('Rare aircraft','One of a kind, very rare, and notable aircraft measured against global fleet rarity.',
    rareList.length?'<ul class="an-rare">'+rareList.slice(0,8).map(anRareRow).join('')+'</ul>':
-    '<p class="muted" style="margin:4px 0 0">No rare aircraft spotted yet. Notable widebodies, retro jets, military and one-of-a-kind airframes appear here automatically.</p>');
+    '<p class="muted" style="margin:4px 0 0">No rare aircraft spotted yet. Notable widebodies, retro jets, military and one-of-a-kind airframes appear here automatically.</p>',rareList.length?'rare':'');
 
   /* 48h + 31d bar charts + Persistence card */
   var extra='';
@@ -1103,19 +1309,19 @@ function statsDraw(j){
   else{
    var rtPct2=agg.flights?Math.round(100*agg.routes/agg.flights):0;
    var list=AN.apDir==='dep'?agg.orig:agg.dest;
-   body=card(AN.apDir==='dep'?'Top departure airports':'Top arrival airports','Route known for '+rtPct2+'% of flights in this period.',
+   body=anCard(AN.apDir==='dep'?'Top departure airports':'Top arrival airports','Route known for '+rtPct2+'% of flights in this period.',
     '<div class="seg" style="margin-bottom:8px"><button type="button" data-an-ap="dep" aria-pressed="'+(AN.apDir==='dep')+'">Departures</button>'+
     '<button type="button" data-an-ap="arr" aria-pressed="'+(AN.apDir==='arr')+'">Arrivals</button></div>'+
-    anRankList(list,agg.routes,'airport',refLat,refLon))}
+    anRankList(list,agg.routes,'airport',refLat,refLon),list.length?'airports':'')}
  } else if(AN.sub==='aircraft'){
   var tList=exMode?exS.types:agg.types,tDenom=exMode?exS.count:agg.flights,rList=exMode?exS.rare:(S.rare||[]);
   body='<div class="grid">'+
-   card('Most common types',exMode?'Aircraft types currently flying in this airspace.':'Top ICAO aircraft types spotted in this period.',anRankList(tList,tDenom,'type',refLat,refLon))+
-   card('Rare aircraft spotted','One of a kind, very rare, and notable aircraft.',rList.length?'<ul class="an-rare">'+rList.map(anRareRow).join('')+'</ul>':'<p class="muted" style="margin:4px 0 0">None spotted yet.</p>')+
+   anCard('Most common types',exMode?'Aircraft types currently flying in this airspace.':'Top ICAO aircraft types spotted in this period.',anRankList(tList,tDenom,'type',refLat,refLon),tList.length?'aircraft':'')+
+   anCard('Rare aircraft spotted','One of a kind, very rare, and notable aircraft.',rList.length?'<ul class="an-rare">'+rList.map(anRareRow).join('')+'</ul>':'<p class="muted" style="margin:4px 0 0">None spotted yet.</p>',rList.length?'rare':'')+
    '</div>';
  } else {
   var aList=exMode?exS.airlines:agg.airlines,aDenom=exMode?exS.count:agg.flights;
-  body=card('Most common airlines',exMode?'Airlines currently flying in this airspace.':'Share of flights by airline in this period.',anRankList(aList,aDenom,'airline',refLat,refLon));
+  body=anCard('Most common airlines',exMode?'Airlines currently flying in this airspace.':'Share of flights by airline in this period.',anRankList(aList,aDenom,'airline',refLat,refLon),aList.length?'airlines':'');
  }
 
  el.innerHTML=top+body;
@@ -1149,7 +1355,21 @@ function anWire(root){
  $$('[data-an-p]',root).forEach(function(b){b.onclick=function(){AN.period=b.dataset.anP;statsDraw()}});
  $$('[data-an-s]',root).forEach(function(b){b.onclick=function(){AN.sub=b.dataset.anS;statsDraw()}});
  $$('[data-an-ap]',root).forEach(function(b){b.onclick=function(){AN.apDir=b.dataset.anAp;statsDraw()}});
+ $$('[data-share]',root).forEach(function(b){b.onclick=function(){anShareCard(b.dataset.share)}});
  var chg=$('#an-chg',root);if(chg)chg.onclick=function(){AN.picker=!AN.picker;statsDraw()};
+ var svEx=$('#an-save-ex',root);if(svEx)svEx.onclick=function(){
+  if(!AN.ex)return;
+  var l=listAt('request_config.radius_requests'),km=Math.max(1,Math.min(250,Math.round(AN.ex.dist*1.852)));
+  var entry={latitude:round5(AN.ex.lat),longitude:wrapLon(AN.ex.lon),radius_km:km,name:String(AN.ex.name||'Explored').slice(0,31)};
+  var idx;
+  if(l.length<5){l.push(entry);idx=l.length-1}else{idx=AN.areaIdx>=0?AN.areaIdx:0;l[idx]=entry}
+  AN.ex=null;AN.exPts=[];AN.exWatch=false;clearInterval(AN.exTimer);AN.areaIdx=idx;AN.picker=false;AN.lastView='';
+  changed();statsDraw();toast('Area queued for your wall · press Save')};
+ var rad=$('#an-rad',root);if(rad)rad.oninput=function(){
+  var i=+rad.dataset.anRad,km=sToR(+rad.value),rv=$('#an-radv',root);
+  set(st.work,'request_config.radius_requests.'+i+'.radius_km',km);
+  if(rv)rv.textContent=fmtR(km);
+  changed();if(AN.map&&window.L){anDrawAreas(window.L)}};
  $$('[data-an-z]',root).forEach(function(b){b.onclick=function(){AN.ex=null;AN.exPts=[];AN.exWatch=false;clearInterval(AN.exTimer);AN.areaIdx=+b.dataset.anZ;AN.picker=false;statsDraw()}});
  $$('[data-ex-pre]',root).forEach(function(b){b.onclick=function(){var p=EX_PRESETS[+b.dataset.exPre];exRun(p[0],p[1],p[2],p[3])}});
  var ew=$('#ex-watch',root);if(ew)ew.onchange=function(){AN.exWatch=ew.checked;clearInterval(AN.exTimer);
