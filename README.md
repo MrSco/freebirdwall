@@ -2,7 +2,7 @@
 
 <img src="docs/images/wall.jpg" alt="A FlightWall mini showing a JetBlue flight from Fort Lauderdale to Raleigh-Durham" width="640">
 
-[Website](https://mrsco.github.io/freebirdwall/) · [Install](#install-it) · [Dashboard](#using-the-dashboard) · [Analytics](#analytics--stats) · [Games](#play-games-on-the-wall) · [Stats backup](#back-up-your-stats-optional) · [Going back](#going-back) · [Troubleshooting](#if-something-goes-wrong)
+[Website](https://mrsco.github.io/freebirdwall/) · [Install](#install-it) · [Dashboard](#using-the-dashboard) · [Weather & flight card](#weather-and-your-flight-card) · [Analytics](#analytics--stats) · [Games](#play-games-on-the-wall) · [Stats backup](#back-up-your-stats-optional) · [Going back](#going-back) · [Troubleshooting](#if-something-goes-wrong)
 
 **FreeBirdWall** is free firmware for the **FlightWall mini**, the LED panel that shows the planes flying over your home. It
 keeps everything the wall already does, needs no subscription, and adds:
@@ -14,13 +14,16 @@ keeps everything the wall already does, needs no subscription, and adds:
 - **Free flight data.** Choose the community services ([adsb.fi](https://adsb.fi) and [adsbdb](https://www.adsbdb.com)) instead of the FlightWall service if you like.
 - **Your trips on the wall (Sync).** Add your flights or import a calendar file, and the wall shows the trip and follows the plane while it is in the air.
 - **Tracked flights**, with real times when you add a FlightAware key.
-- **Analytics & Stats** of the planes your wall has seen — a flight-path heat map across all your watch areas, top departure & arrival airports, most common aircraft types, airlines breakdown, rare aircraft badges, an **Explore anywhere** live map, and optional automatic backups to a computer or NAS on your Wi-Fi — plus **extra clocks** and **your own airport names**.
+- **Analytics & Stats** of the planes your wall has seen, computed on the wall itself — a flight-path heat map across all your watch areas, top departure & arrival airports, most common aircraft types, airlines breakdown, rare aircraft badges, an **Explore anywhere** live map, **Share cards** that never show where you live, and optional automatic backups to a computer or NAS on your Wi-Fi — plus **extra clocks** and **your own airport names**.
 - **Names that fit.** Long airline and airport names are shortened, and scroll if they are still too long.
-- **Everything from FlightWall 4.1 and 4.2, and more.** Live METAR **weather** when no planes are overhead (Simple,
-  Summary or raw METAR), on the free flight data too; **custom lines** on the flight card; **aircraft silhouettes**
-  when there is no airline logo (by exact type when the wall has the pictures); flight levels, short numbers, the
-  flight number instead of the callsign, up to 30 seconds on each flight. The wall keeps the maker's logos and icons
-  current from their own signed updates.
+- **Weather on the wall.** Live METAR [weather](#weather-and-your-flight-card) when no planes are overhead (Simple,
+  Summary or raw METAR), from the station nearest you or one you choose, in your units, on the free flight data too.
+  It can also take a turn **between flights**, and so can the clock.
+- **A flight card that is yours.** Tap a line on the live preview and [choose what it shows](#weather-and-your-flight-card);
+  flight levels, short numbers, the flight number instead of the callsign, up to 30 seconds on each flight.
+- **Aircraft silhouettes and current logos.** A drawing of the aircraft when there is no airline logo (by exact
+  type when the wall has the pictures), and the wall keeps the maker's logos and icons current from their own signed
+  updates.
 
 You can go back to the original firmware at any time: it stays on the wall, next to FreeBirdWall.
 
@@ -121,6 +124,44 @@ changed only in the dashboard stays. You can turn this off under **Device**.
 
 ---
 
+## Weather and your flight card
+
+### Weather when the sky is quiet
+
+Under **Display › When the sky is quiet**, choose **Weather**. The wall then shows live airport weather whenever no
+flights are nearby, in one of three layouts:
+
+| Simple | Summary | Raw METAR |
+| :---: | :---: | :---: |
+| <img src="docs/images/wall-weather-simple.jpg" alt="Simple weather: a cloud, the time, 46°F, New York JFK, MVFR" width="280"> | <img src="docs/images/wall-weather-summary.jpg" alt="Summary weather: wind 310° at 12 kt, visibility 6 SM, ceiling 1,800 ft, 46°F" width="280"> | <img src="docs/images/wall-weather-metar.jpg" alt="The raw METAR for KJFK" width="280"> |
+| A big temperature and a picture of the sky | Wind, visibility, ceiling and temperature | The report as pilots read it, a page every 4 seconds |
+
+<img src="docs/images/dashboard-weather.jpg" alt="The Weather card: layout, station and units" width="260">
+
+- **Station.** The wall finds the reporting airport nearest your first area. To use another, type its ICAO code
+  (for example `KBOS`).
+- **Units.** Temperature in °C or °F, wind in knots, mph, km/h or m/s, visibility in miles or kilometres, ceiling in
+  feet or metres.
+- **The flight category** (VFR, MVFR, IFR, LIFR) shows in its usual colour. A report older than 90 minutes shows its age.
+- **Between flights.** Turn on **Weather between flights** (and **Clock between flights**) and they take a turn
+  after each pass through the flights, at least every 20 seconds, so a busy sky still shows them.
+- **Where it comes from.** The FlightWall service sends the weather when you use it. On the free flight data, the wall
+  reads it from [aviationweather.gov](https://aviationweather.gov) every 10 minutes. Not for navigation or flight planning.
+
+### Choose what each line shows
+
+<img src="docs/images/dashboard-lines.jpg" alt="The preview with its third line outlined and the choices for it listed below" width="260"> <img src="docs/images/wall-lines.jpg" alt="A Technical card for Air NZ flight NZ7: the destination on the third line, FL350 and the flight number below" width="420">
+
+Tap a line on the live preview and pick what goes there: airline, callsign, registration, aircraft type, origin,
+destination, route, altitude, speed, heading, climb rate, or nothing. The preview changes at once. The same choices are
+under **Customize lines**, for each of the three layouts (**Logo**, **No logo** and **Technical**).
+
+Under **Flight card** and **Units** you can also show the **flight number** instead of the callsign (`NZ7`, not
+`ANZ7`, when the flight data has one), altitudes as **flight levels** (`FL350`), shorter number styles, the heading as
+a compass point or in degrees, and keep each flight up for as long as 30 seconds.
+
+---
+
 ## Analytics & Stats
 
 Open the **Stats** tab to see everything your wall has watched — completely free, computed right on the wall with no cloud account or subscription.
@@ -132,7 +173,14 @@ Open the **Stats** tab to see everything your wall has watched — completely fr
 - **Flight-path heat map.** Every live aircraft position paints glowing corridors across all of your watch areas on a dark map (switch between **All areas** or zoom into any individual area).
 - **Today, This week, and Last 30 days.** Switch timeframes with one tap across **Overview**, **Airports** (departures & arrivals), **Aircraft** (most common types), and **Airlines**.
 - **Rare aircraft badges.** Automatically spots **One of a kind**, **Very rare**, and **Notable** aircraft against a built-in global fleet rarity table.
-- **Explore anywhere in the world.** Tap **Change** on the area bar to search any city or airport worldwide and watch live traffic and flight trails anywhere on Earth.
+- **Explore anywhere in the world.** Tap **Change** on the area bar to search any city or airport worldwide and watch live traffic and flight trails anywhere on Earth. **Add to wall** makes the place one of your watch areas.
+- **Change your areas without leaving Stats.** The same **Change** button switches between your areas and resizes them.
+- **Compared with before.** Today shows how busy it is against yesterday, and This week against the week before. The comparison only appears when the wall has watched long enough in both periods for it to be fair.
+- **Share cards.** Every card has a **Share** button that makes a picture to send or save. The pictures never print your area's name or a map of it: the heat map is drawn on a plain grid.
+
+| Explore anywhere | Share cards |
+| :---: | :---: |
+| <img src="docs/images/dashboard-explore.jpg" alt="Stats exploring Heathrow Airport: six live aircraft and their trails, with an Add to wall button" width="240"> | <img src="docs/images/stats-share-map.jpg" alt="A Flight paths share card: glowing corridors on a plain grid with no place names" width="280"><br><img src="docs/images/stats-share-traffic.jpg" alt="A Traffic summary share card: 94 flights, 10% fewer than yesterday" width="280"> |
 
 ---
 
